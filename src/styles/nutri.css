@@ -1,0 +1,528 @@
+/* =============================================================
+   LAPIDARE · Painel da Nutri
+   Estilos extraídos do HTML de referência Painel-Nutri-Unificado.
+   Tudo escopado em .nutri-panel para não conflitar com o app da paciente.
+   ============================================================= */
+
+.nutri-panel {
+  --bg: #faf8f5;
+  --bg2: #f2ede6;
+  --bg3: #eae4dc;
+  --white: #ffffff;
+  --dark: #1c1712;
+  --brown: #8c7b6b;
+  --amber: #c4a882;
+  --border: #d9d3c9;
+  --text2: #6b6058;
+  --text3: #8c7b6b;
+  --text4: #b4a896;
+  --green: #3a6b1a;
+  --green-bg: #e6f0d4;
+  --red: #8c1a1a;
+  --red-bg: #f5e6e6;
+  --blue: #1a5a8c;
+  --blue-bg: #d4e8f5;
+  --orange: #854f0b;
+  --orange-bg: #faeeda;
+  --r: 8px;
+
+  height: 100vh;
+  background: var(--bg3);
+  color: var(--dark);
+  font-family: var(--font-sans);
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 100vh;
+  overflow: hidden;
+}
+
+/* ── SIDEBAR ── */
+.nutri-panel .sidebar {
+  background: var(--dark);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  transition: width .25s;
+  position: relative;
+}
+.nutri-panel .sidebar.collapsed { width: 52px; }
+.nutri-panel .sidebar-toggle {
+  position: absolute;
+  top: 20px; right: -12px;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--dark);
+  border: 0.5px solid #3a3028;
+  color: #8c7b6b;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 10;
+  transition: transform .25s;
+}
+.nutri-panel .sidebar.collapsed .sidebar-toggle { transform: rotate(180deg); }
+.nutri-panel .sidebar-head {
+  padding: 24px 20px 16px;
+  border-bottom: 0.5px solid #2a231c;
+  flex-shrink: 0;
+}
+.nutri-panel .sidebar-brand {
+  font-size: 11px; color: var(--amber);
+  letter-spacing: 2.5px; text-transform: uppercase;
+  font-weight: 500; margin-bottom: 4px;
+  white-space: nowrap;
+}
+.nutri-panel .sidebar-title {
+  font-family: var(--font-serif);
+  font-size: 18px; color: #faf8f5; line-height: 1.2;
+  white-space: nowrap;
+}
+.nutri-panel .sidebar.collapsed .sidebar-brand,
+.nutri-panel .sidebar.collapsed .sidebar-title { display: none; }
+
+.nutri-panel .sidebar-nav { flex: 1; overflow-y: auto; padding: 12px 0; }
+.nutri-panel .sidebar-nav::-webkit-scrollbar { display: none; }
+.nutri-panel .nav-group {
+  font-size: 11px; color: #3d3329;
+  letter-spacing: 2px; text-transform: uppercase;
+  font-weight: 500; padding: 14px 20px 5px;
+}
+.nutri-panel .sidebar.collapsed .nav-group { display: none; }
+.nutri-panel .nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 20px; font-size: 14px;
+  color: #8c7b6b; cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background .15s, color .15s;
+  white-space: nowrap; text-decoration: none;
+  background: none; border-right: none; border-top: none; border-bottom: none;
+  width: 100%;
+  text-align: left;
+}
+.nutri-panel .nav-item:hover { background: #2a231c; color: #faf8f5; }
+.nutri-panel .nav-item.active {
+  background: #2a231c; color: #faf8f5;
+  border-left-color: var(--amber);
+}
+.nutri-panel .nav-icon {
+  font-size: 17px; width: 18px; text-align: center; flex-shrink: 0;
+}
+.nutri-panel .sidebar.collapsed .nav-item span:not(.nav-icon) { display: none; }
+.nutri-panel .sidebar.collapsed .nav-item { padding: 10px 0; justify-content: center; }
+.nutri-panel .nav-badge {
+  font-size: 11px; background: var(--amber); color: var(--dark);
+  padding: 1px 6px; border-radius: 20px; font-weight: 500;
+  margin-left: auto;
+}
+.nutri-panel .sidebar.collapsed .nav-badge { display: none; }
+.nutri-panel .nav-divider { height: 0.5px; background: #2a231c; margin: 8px 0; }
+
+.nutri-panel .sidebar-footer {
+  padding: 16px 20px;
+  border-top: 0.5px solid #2a231c;
+  flex-shrink: 0;
+}
+.nutri-panel .sidebar-footer-label {
+  font-size: 11px; color: var(--amber);
+  letter-spacing: 2px; text-transform: uppercase;
+  font-weight: 500; margin-bottom: 4px;
+}
+.nutri-panel .sidebar-footer-val {
+  font-size: 14px; color: #faf8f5; line-height: 1.3;
+  word-break: break-word;
+}
+.nutri-panel .sidebar-logout {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin-top: 12px; padding: 6px 10px;
+  border-radius: 4px; font-size: 13px;
+  color: #8c7b6b; text-decoration: none;
+  border: 0.5px solid #2a231c;
+  cursor: pointer; background: none;
+}
+.nutri-panel .sidebar-logout:hover { background: #2a231c; }
+.nutri-panel .sidebar.collapsed .sidebar-footer-label,
+.nutri-panel .sidebar.collapsed .sidebar-footer-val,
+.nutri-panel .sidebar.collapsed .sidebar-logout span { display: none; }
+.nutri-panel .sidebar.collapsed .sidebar-logout { padding: 6px; justify-content: center; }
+
+/* ── MAIN ── */
+.nutri-panel .main {
+  display: flex; flex-direction: column;
+  height: 100vh; overflow: hidden;
+  background: var(--bg);
+}
+
+/* ── TOPBAR ── */
+.nutri-panel .topbar {
+  height: 52px; background: var(--dark);
+  display: flex; align-items: center;
+  padding: 0 24px; gap: 12px; flex-shrink: 0;
+}
+.nutri-panel .topbar-zone {
+  font-size: 12px; color: #4a3828;
+  letter-spacing: 1.2px; text-transform: uppercase;
+}
+.nutri-panel .topbar-sep { font-size: 12px; color: #3a3028; }
+.nutri-panel .topbar-page { font-size: 15px; color: #faf8f5; font-weight: 500; }
+.nutri-panel .topbar-right {
+  margin-left: auto; display: flex; align-items: center; gap: 12px;
+}
+.nutri-panel .topbar-date { font-size: 13px; color: #8c7b6b; }
+.nutri-panel .topbar-avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--amber);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; color: var(--dark);
+}
+
+/* ── CONTENT ── */
+.nutri-panel .content {
+  flex: 1; overflow-y: auto;
+  padding: 24px; background: var(--bg);
+}
+.nutri-panel .content::-webkit-scrollbar { width: 4px; }
+.nutri-panel .content::-webkit-scrollbar-track { background: transparent; }
+.nutri-panel .content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── TIPOGRAFIA ── */
+.nutri-panel .page-title {
+  font-family: var(--font-serif); font-size: 24px;
+  color: var(--dark); margin-bottom: 4px; line-height: 1.2;
+}
+.nutri-panel .page-sub {
+  font-size: 14px; color: var(--text3); margin-bottom: 20px;
+}
+.nutri-panel .section-label {
+  font-size: 11px; color: var(--text3);
+  letter-spacing: 1.5px; text-transform: uppercase;
+  font-weight: 500; margin-bottom: 10px; margin-top: 20px;
+}
+.nutri-panel .section-title {
+  font-family: var(--font-serif); font-size: 18px; color: var(--dark);
+}
+.nutri-panel .section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+/* ── CARDS ── */
+.nutri-panel .card {
+  background: var(--white);
+  border: 0.5px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.nutri-panel .card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 0.5px solid #f0ebe3;
+}
+.nutri-panel .card-title { font-size: 15px; font-weight: 500; color: var(--dark); }
+.nutri-panel .card-sub { font-size: 13px; color: var(--text3); }
+.nutri-panel .card-body { padding: 14px 16px; }
+
+/* ── STATS ── */
+.nutri-panel .stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px; margin-bottom: 18px;
+}
+.nutri-panel .stat,
+.nutri-panel .stat-card {
+  background: var(--white);
+  border: 0.5px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px 16px;
+}
+.nutri-panel .stat-label,
+.nutri-panel .stat-lbl {
+  font-size: 12px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+.nutri-panel .stat-val {
+  font-family: var(--font-serif); font-size: 28px;
+  color: var(--dark); line-height: 1;
+}
+.nutri-panel .stat-sub,
+.nutri-panel .stat-diff {
+  font-size: 12px; color: var(--text3); margin-top: 4px;
+}
+
+/* ── GRIDS ── */
+.nutri-panel .g3 {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 10px; margin-bottom: 14px;
+}
+.nutri-panel .g2,
+.nutri-panel .grid2 {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 12px; margin-bottom: 12px;
+}
+
+/* ── PILLS / BADGES ── */
+.nutri-panel .pill {
+  display: inline-block; font-size: 10px;
+  padding: 2px 7px; border-radius: 20px; font-weight: 500;
+}
+.nutri-panel .pill-g { background: var(--green-bg); color: var(--green); }
+.nutri-panel .pill-a { background: var(--orange-bg); color: var(--orange); }
+.nutri-panel .pill-r { background: var(--red-bg); color: var(--red); }
+.nutri-panel .pill-b { background: var(--blue-bg); color: var(--blue); }
+
+/* ── TABELAS ── */
+.nutri-panel .table {
+  width: 100%; border-collapse: collapse;
+  background: var(--white);
+}
+.nutri-panel .table th {
+  padding: 8px 12px; text-align: left;
+  font-size: 11px; color: var(--text3);
+  background: #f5f0e8;
+  border-bottom: 0.5px solid var(--border);
+  text-transform: uppercase; letter-spacing: .8px;
+}
+.nutri-panel .table td {
+  padding: 9px 12px;
+  border-bottom: 0.5px solid #f5f0e8;
+  font-size: 13px; color: var(--dark);
+}
+.nutri-panel .table tr:hover td { background: #faf8f5; }
+
+/* ── BOTÕES ── */
+.nutri-panel .btn {
+  background: var(--dark); color: #f5f2ec;
+  border: none; border-radius: 6px;
+  padding: 8px 16px; font-size: 13px; font-weight: 500;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-sans);
+}
+.nutri-panel .btn:hover { background: #2e2520; }
+.nutri-panel .btn-outline {
+  background: none; color: var(--dark);
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 14px; font-size: 13px;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-sans);
+}
+.nutri-panel .btn-outline:hover { background: #f5f0e8; }
+
+/* ── INPUTS ── */
+.nutri-panel .input-field,
+.nutri-panel .select-field,
+.nutri-panel input,
+.nutri-panel select,
+.nutri-panel textarea {
+  width: 100%; border: 0.5px solid var(--border);
+  border-radius: 6px; padding: 8px 10px;
+  font-size: 13px; color: var(--dark);
+  background: var(--white); font-family: var(--font-sans);
+  outline: none;
+}
+.nutri-panel .input-field:focus,
+.nutri-panel .select-field:focus,
+.nutri-panel input:focus,
+.nutri-panel select:focus,
+.nutri-panel textarea:focus { border-color: var(--amber); }
+
+.nutri-panel .field { margin-bottom: 12px; }
+.nutri-panel .field-label {
+  display: block; font-size: 13px; color: var(--text2);
+  margin-bottom: 5px; font-weight: 500;
+}
+.nutri-panel .form-lbl {
+  font-size: 11px; color: var(--text3);
+  text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 4px; margin-top: 10px; display: block;
+}
+
+/* ── EMPTY STATE PADRÃO (cartão centralizado) ── */
+.nutri-panel .empty-card {
+  padding: 32px; text-align: center;
+}
+.nutri-panel .empty-card .empty-icon {
+  font-size: 30px; color: var(--border);
+  display: block; margin-bottom: 10px;
+}
+.nutri-panel .empty-card .empty-title {
+  font-family: var(--font-serif); font-size: 19px;
+  color: var(--dark); margin-bottom: 6px;
+}
+.nutri-panel .empty-card .empty-sub {
+  font-size: 14px; color: var(--text3);
+  line-height: 1.6; max-width: 340px;
+  margin: 0 auto 18px;
+}
+
+/* ── ALERTAS / AVISOS ── */
+.nutri-panel .al-b {
+  background: var(--blue-bg);
+  border-radius: 6px; padding: 8px 10px;
+  margin-bottom: 6px;
+  display: flex; align-items: flex-start; gap: 7px;
+  border-left: 2px solid var(--blue);
+}
+.nutri-panel .al-t { font-size: 13px; font-weight: 500; color: var(--dark); }
+.nutri-panel .al-d {
+  font-size: 12px; color: var(--text2);
+  margin-top: 2px; line-height: 1.4;
+}
+
+/* ============================================================
+   RESPONSIVO MOBILE (< 900px)
+   ============================================================ */
+
+/* Botão hambúrguer + overlay (sempre presentes no DOM, só visíveis no mobile) */
+.nutri-panel .mobile-toggle {
+  display: none;
+  background: none; border: none;
+  color: var(--white);
+  padding: 6px 10px; margin-right: 4px;
+  cursor: pointer; position: relative;
+  align-items: center; justify-content: center;
+}
+.nutri-panel .mobile-toggle i { font-size: 20px; }
+.nutri-panel .mobile-toggle-badge {
+  position: absolute; top: 0; right: 0;
+  background: var(--amber); color: var(--dark);
+  font-size: 9px; font-weight: 600;
+  border-radius: 20px; padding: 0 5px;
+  min-width: 14px; height: 14px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--dark);
+}
+.nutri-panel .mobile-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(28, 23, 18, .55);
+  z-index: 90;
+  animation: fadeIn .2s ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; } to { opacity: 1; }
+}
+
+@media (max-width: 900px) {
+  /* Layout vira coluna única; sidebar fica off-canvas */
+  .nutri-panel {
+    grid-template-columns: 1fr;
+  }
+  .nutri-panel .sidebar {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: 260px;
+    transform: translateX(-100%);
+    transition: transform .25s cubic-bezier(.2, .8, .2, 1);
+    z-index: 100;
+    box-shadow: none;
+  }
+  .nutri-panel .sidebar.mobile-open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, .25);
+  }
+  .nutri-panel .sidebar-toggle {
+    /* Botão de colapsar não faz sentido no mobile (já é overlay) */
+    display: none;
+  }
+  .nutri-panel.mobile-drawer-open .mobile-overlay {
+    display: block;
+  }
+  .nutri-panel .mobile-toggle {
+    display: inline-flex;
+  }
+
+  /* Topbar: esconde a categoria, foco no título */
+  .nutri-panel .topbar { padding: 0 14px; gap: 8px; }
+  .nutri-panel .topbar-zone,
+  .nutri-panel .topbar-sep,
+  .nutri-panel .topbar-date { display: none; }
+  .nutri-panel .topbar-page { font-size: 14px; }
+
+  /* Content: menos padding */
+  .nutri-panel .content { padding: 16px; }
+
+  /* Grids 2-col e 3-col viram 1 col */
+  .nutri-panel .g2,
+  .nutri-panel .grid2,
+  .nutri-panel .g3 {
+    grid-template-columns: 1fr !important;
+    gap: 10px;
+  }
+
+  /* Stats em 2 colunas no mobile (era 3+ no desktop) */
+  .nutri-panel .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  .nutri-panel .stat-card,
+  .nutri-panel .stat {
+    padding: 12px 14px;
+  }
+  .nutri-panel .stat-val {
+    font-size: 22px;
+  }
+
+  /* Page title menor */
+  .nutri-panel .page-title { font-size: 22px; }
+  .nutri-panel .page-sub { font-size: 13px; margin-bottom: 14px; }
+
+  /* Card overflow horizontal para tabelas largas */
+  .nutri-panel .card {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nutri-panel .table {
+    min-width: 560px;  /* força scroll horizontal em telas estreitas */
+  }
+  .nutri-panel .table th,
+  .nutri-panel .table td {
+    padding: 8px 10px;
+  }
+
+  /* Botões e inputs maiores pra toque */
+  .nutri-panel .btn,
+  .nutri-panel .btn-outline {
+    min-height: 36px;
+  }
+  .nutri-panel input,
+  .nutri-panel select,
+  .nutri-panel textarea {
+    padding: 10px 12px;
+    font-size: 14px;  /* evita zoom no iOS */
+  }
+}
+
+@media (max-width: 520px) {
+  /* Em telas muito estreitas, stats em 1 coluna */
+  .nutri-panel .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .nutri-panel .content { padding: 12px; }
+  .nutri-panel .page-title { font-size: 20px; }
+
+  /* Empty card menor */
+  .nutri-panel .empty-card { padding: 24px 16px; }
+}
+
+/* Layout específico do Chat (lista + conversa) */
+.nutri-panel .chat-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 12px;
+  height: calc(100vh - 240px);
+  min-height: 480px;
+}
+@media (max-width: 900px) {
+  .nutri-panel .chat-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .nutri-panel .chat-layout > .card:first-child {
+    max-height: 240px;
+  }
+  .nutri-panel .chat-layout > .card:last-child {
+    min-height: 480px;
+  }
+}

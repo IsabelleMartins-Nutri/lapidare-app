@@ -1,0 +1,144 @@
+import { useEffect, useState } from 'react';
+import { supabase } from '../../lib/supabase.js';
+import { useSession } from '../../lib/session.jsx';
+import { dataBR } from '../../lib/utils.js';
+
+export default function Plano() {
+  const { user } = useSession();
+  const [plano, setPlano] = useState(undefined); // undefined=loading, null=vazio
+  const [validade, setValidade] = useState(null);
+  const [openSubs, setOpenSubs] = useState({});
+
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      if (!user) return;
+      const { data } = await supabase
+        .from('planos')
+        .select('dados, validade, publicado_em')
+        .eq('paciente_id', user.id)
+        .order('publicado_em', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!active) return;
+      setPlano(data?.dados ?? null);
+      setValidade(data?.validade ?? null);
+    }
+    load();
+    return () => { active = false; };
+  }, [user]);
+
+  const toggleSubs = (key) => setOpenSubs(s => ({ ...s, [key]: !s[key] }));
+
+  if (plano === undefined) {
+    return <div className="empty-state"><div className="empty-sub">Carregando…</div></div>;
+  }
+
+  if (!plano) {
+    return (
+      <div className="empty-state">
+        <i className="ti ti-salad empty-icon" aria-hidden="true"></i>
+        <div className="empty-title">Plano não publicado ainda</div>
+        <div className="empty-sub">
+          Sua nutricionista está preparando seu plano personalizado. Você será notificada quando estiver pronto.
+        </div>
+      </div>
+    );
+  }
+
+  const totalFeitos = plano.refeicoes?.filter(r => r.feita).length ?? 0;
+  const total = plano.refeicoes?.length ?? 0;
+
+  return (
+    <>
+      {/* Macros */}
+      <div className="card" style={{ padding: '14px 16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <span style={{ fontSize: 10, letterSpacing: '.18em', textTransform: 'uppercase', color: 'var(--muted)', fontWeight: 500 }}>
+            Macros do dia
+          </span>
+          <span className="pill ghost" style={{ fontSize: 10 }}>{plano.macros?.kcal} kcal</span>
+        </div>
+        {[
+          { label: 'Proteína',    v: plano.macros?.prot_g, color: 'var(--red)' },
+          { label: 'Carboidrato', v: plano.macros?.cho_g,  color: 'var(--gold)' },
+          { label: 'Gordura',     v: plano.macros?.lip_g,  color: 'var(--green)' },
+        ].map((m, i) => (
+          <div key={i} className="macro-row">
+            <div className="macro-label"><span>{m.label}</span><span>{m.v}g</span></div>
+            <div className="bar"><i style={{ width: '70%', background: m.color }}></i></div>
+          </div>
+        ))}
+        {(plano.macros?.agua_l || plano.macros?.fibras_g) && (
+          <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>
+            💧 Meta: {plano.macros.agua_l}L · 🌾 Fibras: {plano.macros.fibras_g}g
+          </div>
+        )}
+      </div>
+
+      {/* Progresso */}
+      {total > 0 && (
+        <div style={{ margin: '0 16px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="bar" style={{ flex: 1 }}>
+            <i style={{ width: `${(totalFeitos / total) * 100}%`, background: 'var(--green)' }}></i>
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+            {totalFeitos}/{total} refeições
+          </span>
+        </div>
+      )}
+
+      {/* Refeições */}
+      {plano.refeicoes?.map((ref, ri) => (
+        <div key={ri} className="refeicao-card">
+          <div className="refeicao-header">
+            <div>
+              <div className="refeicao-titulo">{ref.emoji} {ref.nome}</div>
+              {ref.horario && <div className="refeicao-horario">{ref.horario}</div>}
+            </div>
+            {ref.kcal && <span className="refeicao-kcal">{ref.kcal} kcal</span>}
+          </div>
+
+          {ref.alimentos?.map((al, ai) => (
+            <div key={ai}>
+              <div className="alimento-row" style={{ background: ai % 2 === 0 ? 'var(--paper)' : 'var(--bg-soft)' }}>
+                <div>
+                  <div className="alimento-nome">{al.nome}</div>
+                  {al.qty && <div className="alimento-qty">{al.qty}{al.prot_g ? ` · ${al.prot_g}g prot` : ''}</div>}
+                </div>
+                {al.kcal && <span className="alimento-kcal">{al.kcal} kcal</span>}
+              </div>
+
+              {al.subs?.length > 0 && (
+                <>
+                  <button className="subs-toggle" onClick={() => toggleSubs(`${ri}-${ai}`)}>
+                    <i className={`ti ti-${openSubs[`${ri}-${ai}`] ? 'chevron-up' : 'chevron-down'}`} style={{ fontSize: 12 }} aria-hidden="true"></i>
+                    {openSubs[`${ri}-${ai}`] ? 'Fechar substituições' : `Ver ${al.subs.length} substituições`}
+                  </button>
+                  {openSubs[`${ri}-${ai}`] && (
+                    <div className="subs-list">
+                      {al.subs.map((s, si) => <div key={si} className="sub-item">→ {s}</div>)}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+
+          {ref.obs && (
+            <div className="refeicao-obs">
+              <i className="ti ti-info-circle" style={{ fontSize: 12, marginRight: 5, color: 'var(--gold-deep)' }} aria-hidden="true"></i>
+              {ref.obs}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {validade && (
+        <div style={{ padding: '8px 16px', fontSize: 10, color: 'var(--muted)', textAlign: 'center' }}>
+          Válido até {dataBR(validade)}
+        </div>
+      )}
+    </>
+  );
+}

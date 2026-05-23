@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Garante que o React Router funcione em qualquer rota direta
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

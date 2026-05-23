@@ -1,0 +1,244 @@
+/* =============================================================
+   LAPIDARE · Check-in (formulário dinâmico)
+   Escopado em .checkin-form para reutilizar tanto na paciente
+   quanto na preview/edição do template no painel da nutri.
+   ============================================================= */
+
+.checkin-form {
+  --ckg-bg: #f7f3ee;
+  --ckg-bg-soft: #ede5d8;
+  --ckg-paper: #fdfaf6;
+  --ckg-ink: #1c1712;
+  --ckg-ink-soft: #4a3728;
+  --ckg-muted: #9a8472;
+  --ckg-gold: #c4a882;
+  --ckg-gold-deep: #8b6914;
+  --ckg-green: #2d6a4f;
+  --ckg-green-soft: #d8efe4;
+
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.checkin-form .ckg-section {
+  padding: 24px 20px 0;
+}
+
+.checkin-form .ckg-section-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--ckg-muted);
+  margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.checkin-form .ckg-section-label::after {
+  content: '';
+  flex: 1;
+  height: 0.5px;
+  background: var(--ckg-bg-soft);
+}
+
+/* ── Card de pergunta ── */
+.checkin-form .ckg-q {
+  background: var(--ckg-paper);
+  border: 0.5px solid var(--ckg-bg-soft);
+  border-radius: 16px;
+  padding: 18px 16px;
+  margin-bottom: 10px;
+  transition: border-color .2s;
+}
+.checkin-form .ckg-q:focus-within { border-color: var(--ckg-gold); }
+
+.checkin-form .ckg-num {
+  font-size: 10px;
+  color: var(--ckg-gold-deep);
+  font-weight: 600;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+.checkin-form .ckg-pergunta {
+  font-size: 14px;
+  color: var(--ckg-ink);
+  font-weight: 500;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.checkin-form .ckg-sub {
+  font-size: 11px;
+  color: var(--ckg-muted);
+  margin-top: -10px;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+/* ── Emoji scale ── */
+.checkin-form .ckg-emoji-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+}
+.checkin-form .ckg-emoji-btn {
+  flex: 1;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  border: 1.5px solid var(--ckg-bg-soft);
+  background: var(--ckg-bg);
+  font-size: 22px;
+  cursor: pointer;
+  transition: all .15s;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 3px;
+  font-family: inherit;
+}
+.checkin-form .ckg-emoji-btn .lbl {
+  font-size: 8px;
+  color: var(--ckg-muted);
+}
+.checkin-form .ckg-emoji-btn:hover {
+  transform: scale(1.06);
+  border-color: var(--ckg-gold);
+}
+.checkin-form .ckg-emoji-btn.active {
+  border-color: var(--ckg-gold-deep);
+  background: #fbf5ec;
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(196,168,130,0.3);
+}
+
+/* ── Slider ── */
+.checkin-form .ckg-slider-wrap { padding: 4px 0; }
+.checkin-form .ckg-slider {
+  -webkit-appearance: none;
+  width: 100%; height: 4px;
+  border-radius: 4px;
+  background: var(--ckg-bg-soft);
+  outline: none;
+}
+.checkin-form .ckg-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--ckg-ink);
+  cursor: pointer;
+  border: 3px solid var(--ckg-gold);
+  box-shadow: 0 2px 8px rgba(28,23,18,.2);
+}
+.checkin-form .ckg-slider-labels {
+  display: flex; justify-content: space-between; margin-top: 8px;
+}
+.checkin-form .ckg-slider-labels span { font-size: 10px; color: var(--ckg-muted); }
+.checkin-form .ckg-slider-value {
+  text-align: center;
+  margin-top: 6px;
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 500;
+  color: var(--ckg-ink);
+}
+.checkin-form .ckg-slider-value .unit {
+  font-size: 16px; color: var(--ckg-muted); margin-left: 4px;
+}
+
+/* ── Opções (single/multi) ── */
+.checkin-form .ckg-options {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.checkin-form .ckg-opt {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--ckg-bg-soft);
+  background: var(--ckg-bg);
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ckg-ink);
+  cursor: pointer;
+  transition: all .15s;
+  display: flex; align-items: center; gap: 10px;
+}
+.checkin-form .ckg-opt:hover { border-color: var(--ckg-gold); background: #fbf5ec; }
+.checkin-form .ckg-opt.active {
+  border-color: var(--ckg-gold-deep);
+  background: #fbf5ec;
+  font-weight: 500;
+}
+.checkin-form .ckg-opt-check {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ckg-bg-soft);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.checkin-form .ckg-opt.active .ckg-opt-check {
+  background: var(--ckg-gold-deep);
+  border-color: var(--ckg-gold-deep);
+}
+.checkin-form .ckg-opt.active .ckg-opt-check::after {
+  content: '✓';
+  font-size: 10px;
+  color: white;
+  font-weight: 700;
+}
+
+/* ── Hábitos ── */
+.checkin-form .ckg-habitos {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.checkin-form .ckg-habito {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--ckg-bg-soft);
+  background: var(--ckg-bg);
+  cursor: pointer;
+  transition: all .15s;
+  font-family: inherit;
+  width: 100%;
+  text-align: left;
+}
+.checkin-form .ckg-habito:hover { border-color: var(--ckg-gold); }
+.checkin-form .ckg-habito.checked {
+  border-color: var(--ckg-green);
+  background: var(--ckg-green-soft);
+}
+.checkin-form .ckg-habito-check {
+  width: 20px; height: 20px;
+  border-radius: 6px;
+  border: 1.5px solid var(--ckg-bg-soft);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.checkin-form .ckg-habito.checked .ckg-habito-check {
+  background: var(--ckg-green);
+  border-color: var(--ckg-green);
+}
+.checkin-form .ckg-habito.checked .ckg-habito-check::after {
+  content: '✓';
+  font-size: 11px; color: white; font-weight: 700;
+}
+.checkin-form .ckg-habito-emoji { font-size: 18px; }
+.checkin-form .ckg-habito-nome { font-size: 13px; color: var(--ckg-ink); flex: 1; }
+.checkin-form .ckg-habito.checked .ckg-habito-nome { color: var(--ckg-green); font-weight: 500; }
+
+/* ── Textarea ── */
+.checkin-form .ckg-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--ckg-bg-soft);
+  background: var(--ckg-bg);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ckg-ink);
+  resize: vertical;
+  outline: none;
+  transition: border-color .2s;
+  line-height: 1.6;
+  box-sizing: border-box;
+}
+.checkin-form .ckg-textarea:focus { border-color: var(--ckg-gold); }
+.checkin-form .ckg-textarea::placeholder { color: var(--ckg-muted); }

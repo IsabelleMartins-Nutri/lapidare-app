@@ -1,0 +1,482 @@
+/* =============================================================
+   LAPIDARE · App da Paciente
+   Estilos extraídos do HTML App-Paciente-Lapidare.
+   Mobile-first; no desktop centraliza em 430px de largura.
+   ============================================================= */
+
+.paciente-app {
+  --bg: #f0ebe3;
+  --bg-soft: #f5f2ec;
+  --bg-deep: #e8e2d6;
+  --ink: #1c1712;
+  --ink-soft: #4a3828;
+  --muted: #8c7b6b;
+  --muted-2: #b4a896;
+  --hair: #d9d3c9;
+  --hair-soft: #e6dfd3;
+  --paper: #ffffff;
+  --gold: #c4a882;
+  --gold-soft: #ebd9b8;
+  --gold-deep: #a08456;
+  --green: #3b6d11;
+  --green-soft: #e6f0d4;
+  --blue: #185fa5;
+  --blue-soft: #d4e8f5;
+  --red: #993556;
+  --red-soft: #fbeaf0;
+  --orange: #854f0b;
+  --orange-soft: #faeeda;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  max-width: 430px;
+  margin: 0 auto;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  position: relative;
+}
+
+@media (min-width: 600px) {
+  body { background: linear-gradient(180deg, #ece6dc 0%, #e3dcce 100%); }
+  .paciente-app {
+    box-shadow: 0 0 32px rgba(28,23,18,.08);
+    min-height: 100vh;
+  }
+}
+
+/* ── HEADER ── */
+.paciente-app .app-header {
+  padding: 18px 22px 14px;
+  display: flex; justify-content: space-between; align-items: flex-end;
+  flex-shrink: 0; gap: 10px;
+  background: var(--bg);
+  position: sticky; top: 0; z-index: 10;
+}
+.paciente-app .app-header > div:first-child { min-width: 0; flex: 1; }
+.paciente-app .eyebrow {
+  font-size: 9px;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+  font-weight: 500;
+}
+.paciente-app .app-title {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--ink);
+}
+.paciente-app .app-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.paciente-app .header-right {
+  display: flex; gap: 8px; align-items: center;
+  flex-shrink: 0;
+}
+.paciente-app .header-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--gold);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; color: var(--ink);
+}
+
+/* ── BODY ── */
+.paciente-app .body {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 80px; /* espaço para tab bar */
+}
+
+/* ── CARDS — com sombra suave e profundidade ── */
+.paciente-app .card {
+  background: var(--paper);
+  border: 0.5px solid var(--hair);
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin: 0 16px 10px;
+  box-shadow:
+    0 1px 2px rgba(28, 23, 18, .04),
+    0 4px 16px rgba(28, 23, 18, .04);
+  transition: box-shadow .2s ease, transform .15s ease;
+}
+.paciente-app .card.dark {
+  background: linear-gradient(135deg, var(--ink) 0%, #1a1612 100%);
+  color: var(--bg-soft);
+  border-color: var(--ink);
+  box-shadow:
+    0 2px 4px rgba(28, 23, 18, .15),
+    0 8px 24px rgba(28, 23, 18, .12);
+}
+.paciente-app .card.gold {
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold-deep) 100%);
+  border-color: transparent;
+  color: var(--ink);
+  box-shadow:
+    0 2px 4px rgba(160, 132, 86, .15),
+    0 8px 24px rgba(160, 132, 86, .15);
+}
+.paciente-app .card.cream { background: var(--bg-soft); border-color: var(--hair-soft); }
+
+/* Toque/clique: pequeno efeito tátil em botões e cards interativos */
+.paciente-app button:active,
+.paciente-app .card[role="button"]:active,
+.paciente-app a:active {
+  transform: scale(.98);
+}
+
+/* Cards clicáveis (cursor: pointer inline) ganham hover + tap suaves.
+   Cards estáticos não disparam — pointer é o gatilho. */
+.paciente-app .card[style*="cursor: pointer"]:hover,
+.paciente-app .card[style*="cursor:pointer"]:hover {
+  box-shadow:
+    0 2px 4px rgba(28, 23, 18, .06),
+    0 12px 28px rgba(28, 23, 18, .08);
+  border-color: var(--gold-deep);
+}
+.paciente-app .card[style*="cursor: pointer"]:active,
+.paciente-app .card[style*="cursor:pointer"]:active {
+  transform: scale(.98);
+}
+
+/* Animação de entrada sutil pros cards (carregamento da tela) */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.paciente-app .card,
+.paciente-app .tile,
+.paciente-app .compras-cat-card,
+.paciente-app .refeicao-card,
+.paciente-app .feed-card {
+  animation: fadeInUp .35s ease-out both;
+}
+/* Stagger leve: cada card entra um pouquinho depois do anterior */
+.paciente-app .card:nth-of-type(2),
+.paciente-app .tile:nth-of-type(2) { animation-delay: .04s; }
+.paciente-app .card:nth-of-type(3),
+.paciente-app .tile:nth-of-type(3) { animation-delay: .08s; }
+.paciente-app .card:nth-of-type(4),
+.paciente-app .tile:nth-of-type(4) { animation-delay: .12s; }
+.paciente-app .card:nth-of-type(5) { animation-delay: .16s; }
+
+/* Respeita usuários com prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .paciente-app *, .paciente-app *::before, .paciente-app *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* ── COMPONENTES COMUNS ── */
+.paciente-app .pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; padding: 3px 9px;
+  border-radius: 20px; font-weight: 500;
+}
+.paciente-app .pill.gold { background: var(--gold-soft); color: var(--orange); }
+.paciente-app .pill.ghost { background: transparent; border: 0.5px solid var(--hair); color: var(--muted); }
+
+.paciente-app .bar {
+  background: var(--bg-deep);
+  border-radius: 3px; height: 6px; overflow: hidden;
+}
+.paciente-app .bar > i {
+  display: block; height: 100%; border-radius: 3px;
+  background: var(--gold);
+}
+.paciente-app .bar.green > i { background: var(--green); }
+
+.paciente-app .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 11px 18px; border-radius: 12px;
+  font-size: 13px; font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+.paciente-app .btn.primary { background: var(--ink); color: var(--bg-soft); border: none; }
+.paciente-app .btn.ghost { background: var(--paper); color: var(--ink); border: 0.5px solid var(--hair); }
+.paciente-app .btn.gold { background: var(--gold); color: var(--ink); border: none; }
+.paciente-app .btn.full { width: 100%; }
+.paciente-app .btn.sm { padding: 7px 12px; font-size: 12px; border-radius: 9px; }
+
+/* ── EMPTY STATE ── */
+.paciente-app .empty-state {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 48px 24px; text-align: center; gap: 10px;
+}
+.paciente-app .empty-state i.empty-icon { font-size: 36px; color: var(--muted-2); }
+.paciente-app .empty-state .empty-title { font-size: 15px; font-weight: 500; color: var(--ink-soft); }
+.paciente-app .empty-state .empty-sub {
+  font-size: 12px; color: var(--muted); line-height: 1.5; max-width: 280px;
+}
+
+.paciente-app .serif { font-family: var(--font-serif); letter-spacing: -0.01em; font-weight: 500; }
+
+/* ── PLANO ── */
+.paciente-app .refeicao-card {
+  margin: 0 16px 10px;
+  background: var(--paper);
+  border: 0.5px solid var(--hair);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.paciente-app .refeicao-header {
+  background: var(--ink);
+  padding: 10px 16px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.paciente-app .refeicao-titulo { font-family: var(--font-serif); font-size: 16px; color: var(--bg-soft); }
+.paciente-app .refeicao-kcal { font-size: 11px; color: var(--gold-soft); }
+.paciente-app .refeicao-horario { font-size: 10px; color: var(--muted-2); }
+.paciente-app .alimento-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 16px; border-bottom: 0.5px solid var(--hair-soft);
+}
+.paciente-app .alimento-row:last-child { border-bottom: none; }
+.paciente-app .alimento-nome { font-size: 13px; color: var(--ink); font-weight: 500; }
+.paciente-app .alimento-qty { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.paciente-app .alimento-kcal { font-size: 12px; color: var(--muted); }
+.paciente-app .refeicao-obs {
+  background: var(--bg-soft);
+  border-top: 0.5px solid var(--hair-soft);
+  padding: 8px 16px; font-size: 11px;
+  color: var(--ink-soft); line-height: 1.5;
+}
+.paciente-app .subs-toggle {
+  width: 100%; background: none;
+  border: none; border-top: 0.5px dashed var(--hair);
+  padding: 8px 16px; font-size: 11px;
+  color: var(--gold-deep); font-weight: 500;
+  text-align: left; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-sans);
+}
+.paciente-app .subs-list {
+  background: var(--bg-soft);
+  padding: 8px 16px 12px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.paciente-app .sub-item {
+  font-size: 11px; color: var(--ink-soft);
+  padding: 5px 8px; background: var(--paper);
+  border-radius: 6px; border: 0.5px solid var(--hair-soft);
+}
+.paciente-app .macro-row { margin-bottom: 10px; }
+.paciente-app .macro-label {
+  display: flex; justify-content: space-between; margin-bottom: 4px;
+}
+.paciente-app .macro-label span:first-child { font-size: 12px; color: var(--ink-soft); }
+.paciente-app .macro-label span:last-child { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ── COMPRAS ── */
+.paciente-app .compra-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 0; border-bottom: 0.5px solid var(--hair-soft);
+  cursor: pointer;
+}
+.paciente-app .compra-item:last-child { border-bottom: none; }
+.paciente-app .compra-nome { font-size: 13px; color: var(--ink); flex: 1; }
+.paciente-app .compra-item.done .compra-nome {
+  text-decoration: line-through; color: var(--muted);
+}
+.paciente-app .check {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 1.5px solid var(--hair);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--paper); cursor: pointer;
+  font-family: var(--font-sans);
+}
+.paciente-app .check.done { background: var(--ink); border-color: var(--ink); }
+.paciente-app .check.done i { color: var(--bg-soft); font-size: 14px; }
+.paciente-app .check i { font-size: 0; }
+.paciente-app .check.done i { font-size: 14px; }
+
+/* ── FEED ── */
+.paciente-app .feed-card {
+  background: var(--paper);
+  border: 0.5px solid var(--hair);
+  border-radius: 14px;
+  margin: 0 16px 12px;
+  overflow: hidden;
+}
+.paciente-app .feed-head { padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
+.paciente-app .feed-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--gold-soft);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: var(--ink);
+}
+.paciente-app .feed-img {
+  width: 100%; height: 240px;
+  display: block; object-fit: cover;
+  background: linear-gradient(135deg, #d9d3c9, #c4a882);
+}
+.paciente-app .feed-caption { padding: 8px 12px 10px; font-size: 12px; line-height: 1.45; color: var(--ink); }
+.paciente-app .feed-comment {
+  background: var(--bg-soft);
+  border-left: 2px solid var(--gold);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px; color: var(--ink-soft);
+  margin: 4px 12px 12px; line-height: 1.45;
+}
+.paciente-app .feed-comment .who {
+  color: var(--gold-deep); font-weight: 600; font-size: 10px;
+  display: block; margin-bottom: 2px;
+}
+
+/* ── CHAT ── */
+.paciente-app .bubble {
+  padding: 9px 13px;
+  border-radius: 16px;
+  font-size: 13px;
+  max-width: 78%;
+  line-height: 1.4;
+  margin-bottom: 6px;
+  word-wrap: break-word;
+}
+.paciente-app .bubble.dr {
+  background: var(--paper);
+  color: var(--ink);
+  border: 0.5px solid var(--hair);
+  border-bottom-left-radius: 4px;
+  align-self: flex-start;
+}
+.paciente-app .bubble.me {
+  background: var(--ink);
+  color: var(--bg-soft);
+  border-bottom-right-radius: 4px;
+  align-self: flex-end;
+}
+.paciente-app .bubble .ts { font-size: 9px; opacity: .55; margin-top: 3px; }
+.paciente-app .chat-input {
+  background: var(--paper);
+  border: 0.5px solid var(--hair);
+  border-radius: 22px;
+  padding: 6px 6px 6px 14px;
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 16px 12px;
+}
+.paciente-app .chat-input input {
+  flex: 1; border: none; outline: none;
+  font-size: 13px; padding: 6px 0;
+  background: transparent; font-family: var(--font-sans);
+}
+.paciente-app .chat-input button {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--ink); color: var(--bg-soft);
+  display: flex; align-items: center; justify-content: center;
+  border: none; cursor: pointer;
+}
+.paciente-app .chat-input button:disabled { opacity: .3; }
+
+/* ── TAB BAR ── */
+.paciente-app .tabbar {
+  position: fixed;
+  bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 100%; max-width: 430px;
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 0.5px solid var(--hair);
+  padding: 8px 4px calc(22px + env(safe-area-inset-bottom, 0));
+  display: flex;
+  z-index: 20;
+  box-shadow: 0 -4px 24px rgba(28, 23, 18, .06);
+}
+.paciente-app .tabbar .tab {
+  transition: transform .15s ease, color .2s ease;
+}
+.paciente-app .tabbar .tab:active {
+  transform: scale(.92);
+}
+.paciente-app .tabbar .tab {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 3px; padding: 4px 2px;
+  opacity: .42;
+  position: relative;
+  background: none; border: none; cursor: pointer;
+  font-family: var(--font-sans);
+  text-decoration: none;
+  color: var(--ink);
+}
+.paciente-app .tabbar .tab.active { opacity: 1; }
+.paciente-app .tabbar .tab i { font-size: 21px; color: var(--ink); }
+.paciente-app .tabbar .tab span { font-size: 10px; font-weight: 500; color: var(--ink); }
+.paciente-app .tabbar .tab.active::before {
+  content: ''; position: absolute; top: -8px; left: 50%; transform: translateX(-50%);
+  width: 24px; height: 3px; border-radius: 0 0 3px 3px;
+  background: var(--gold);
+}
+
+/* ── SHEET (Mais) ── */
+.paciente-app .sheet-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(28, 23, 18, .45);
+  z-index: 30;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.paciente-app .sheet {
+  background: var(--bg);
+  width: 100%; max-width: 430px;
+  border-radius: 28px 28px 0 0;
+  padding: 18px 18px calc(28px + env(safe-area-inset-bottom, 0));
+  max-height: 80vh; overflow-y: auto;
+}
+.paciente-app .sheet .grabber {
+  width: 36px; height: 4px; background: var(--hair);
+  border-radius: 2px; margin: 0 auto 14px;
+}
+.paciente-app .sheet-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px;
+  width: 100%; text-align: left;
+  background: var(--paper);
+  border: 0.5px solid var(--hair);
+  border-radius: 16px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  box-shadow:
+    0 1px 2px rgba(28, 23, 18, .04),
+    0 2px 8px rgba(28, 23, 18, .03);
+  transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease;
+}
+.paciente-app .sheet-item:hover {
+  box-shadow:
+    0 2px 4px rgba(28, 23, 18, .06),
+    0 8px 24px rgba(28, 23, 18, .06);
+  border-color: var(--gold-deep);
+}
+.paciente-app .sheet-item:active {
+  transform: scale(.98);
+}
+.paciente-app .sheet-item .icon-wrap {
+  transition: background .2s ease, color .2s ease;
+}
+.paciente-app .sheet-item:hover .icon-wrap {
+  background: var(--gold-soft, var(--bg-soft));
+}
+.paciente-app .sheet-item .icon-wrap {
+  width: 40px; height: 40px; border-radius: 12px;
+  background: var(--bg-soft);
+  display: flex; align-items: center; justify-content: center;
+}
+.paciente-app .sheet-item .icon-wrap i { font-size: 17px; color: var(--ink); }
+.paciente-app .sheet-item .label { font-size: 13px; font-weight: 500; color: var(--ink); }
+.paciente-app .sheet-item .sub { font-size: 11px; color: var(--muted); }
+
+/* ── PROGRESSO (chart) ── */
+.paciente-app .weight-chart { width: 100%; height: 160px; }
