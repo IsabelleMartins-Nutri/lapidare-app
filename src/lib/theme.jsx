@@ -24,6 +24,8 @@ const DEFAULT_TEMA = {
   mensagem_login: null,
   mensagem_termo: null,
   cor_texto_sidebar: null,  // null = auto-calcula por luminância
+  nutri_nome: 'Sua nutri',  // nome de exibição da nutri (pra paciente ver)
+  nutri_foto_url: null,     // foto de perfil da nutri
 };
 
 const ThemeContext = createContext(DEFAULT_TEMA);
@@ -49,6 +51,8 @@ export function ThemeProvider({ children }) {
           mensagem_login:    profile.mensagem_login  ?? null,
           mensagem_termo:    profile.mensagem_termo  ?? null,
           cor_texto_sidebar: profile.cor_texto_sidebar ?? null,
+          nutri_nome:        profile.nome            ?? 'Sua nutri',
+          nutri_foto_url:    profile.foto_url        ?? null,
         });
         return;
       }

@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import BrandFooter from './BrandFooter.jsx';
 import { useSession, signOut } from '../lib/session.jsx';
+import { useTheme } from '../lib/theme.jsx';
 import { supabase } from '../lib/supabase.js';
 import { iniciais } from '../lib/utils.js';
 import '../styles/paciente.css';
@@ -24,20 +25,21 @@ const MAIS_ITEMS = [
 ];
 
 const HEADERS = {
-  '/paciente/inicio':       (nome) => ({ eyebrow: 'Meu plano',         title: `Bom dia, ${nome}` }),
-  '/paciente/plano':        () =>      ({ eyebrow: 'Plano alimentar',  title: 'Meu plano',         subtitle: '' }),
-  '/paciente/feed':         () =>      ({ eyebrow: 'Diário alimentar', title: 'Pratos',            subtitle: 'Registre o que você comeu' }),
-  '/paciente/progresso':    () =>      ({ eyebrow: 'Minha evolução',   title: 'Progresso' }),
-  '/paciente/compras':      () =>      ({ eyebrow: 'Lista',            title: 'Compras',           subtitle: 'Para a semana' }),
-  '/paciente/prescricoes':  () =>      ({ eyebrow: 'Documentos',       title: 'Prescrições' }),
-  '/paciente/ebooks':       () =>      ({ eyebrow: 'Materiais',        title: 'E-books',           subtitle: 'Compartilhados pela Dra.' }),
-  '/paciente/suplementos':  () =>      ({ eyebrow: 'Habit tracker',    title: 'Meus suplementos',  subtitle: 'Marque diariamente' }),
-  '/paciente/habitos':      () =>      ({ eyebrow: 'Hábitos do dia',   title: 'Meus hábitos',      subtitle: 'Acompanhe sua rotina' }),
-  '/paciente/chat':         () =>      ({ eyebrow: 'Conversa',         title: 'Dra. Daniela',      subtitle: 'Online' }),
+  '/paciente/inicio':       (nome) =>           ({ eyebrow: 'Meu plano',         title: `Bom dia, ${nome}` }),
+  '/paciente/plano':        () =>                ({ eyebrow: 'Plano alimentar',  title: 'Meu plano',         subtitle: '' }),
+  '/paciente/feed':         () =>                ({ eyebrow: 'Diário alimentar', title: 'Pratos',            subtitle: 'Registre o que você comeu' }),
+  '/paciente/progresso':    () =>                ({ eyebrow: 'Minha evolução',   title: 'Progresso' }),
+  '/paciente/compras':      () =>                ({ eyebrow: 'Lista',            title: 'Compras',           subtitle: 'Para a semana' }),
+  '/paciente/prescricoes':  () =>                ({ eyebrow: 'Documentos',       title: 'Prescrições' }),
+  '/paciente/ebooks':       () =>                ({ eyebrow: 'Materiais',        title: 'E-books',           subtitle: 'Compartilhados pela sua nutri' }),
+  '/paciente/suplementos':  () =>                ({ eyebrow: 'Habit tracker',    title: 'Meus suplementos',  subtitle: 'Marque diariamente' }),
+  '/paciente/habitos':      () =>                ({ eyebrow: 'Hábitos do dia',   title: 'Meus hábitos',      subtitle: 'Acompanhe sua rotina' }),
+  '/paciente/chat':         (_nome, nutriNome) => ({ eyebrow: 'Conversa',         title: nutriNome || 'Sua nutri', subtitle: 'Online' }),
 };
 
 export default function PacienteLayout() {
   const { profile, user } = useSession();
+  const tema = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -75,8 +77,8 @@ export default function PacienteLayout() {
 
   const header = useMemo(() => {
     const factory = HEADERS[location.pathname];
-    return factory ? factory(primeiroNome) : { eyebrow: '', title: '' };
-  }, [location.pathname, primeiroNome]);
+    return factory ? factory(primeiroNome, tema.nutri_nome) : { eyebrow: '', title: '' };
+  }, [location.pathname, primeiroNome, tema.nutri_nome]);
 
   const handleSignOut = async () => {
     await signOut();

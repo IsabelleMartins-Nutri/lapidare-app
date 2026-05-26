@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase.js';
 import { useSession } from '../../lib/session.jsx';
+import { useTheme } from '../../lib/theme.jsx';
 import { textoDias, dataConsultaBR, diasAte, linkCall, consultaEmBreve, gerarGoogleCalendarUrl } from '../../lib/utils.js';
 
 export default function Inicio() {
+  const tema = useTheme();
+  const nutriNome = tema.nutri_nome ?? 'Sua nutri';
   const navigate = useNavigate();
   const { user } = useSession();
   const [plano, setPlano] = useState(null);
@@ -86,7 +89,7 @@ export default function Inicio() {
   const emBreve = proximaConsulta ? consultaEmBreve(proximaConsulta.data_hora) : false;
   const callUrl = proximaConsulta ? linkCall(proximaConsulta) : null;
   const gcalUrl = proximaConsulta ? gerarGoogleCalendarUrl({
-    titulo: 'Consulta com a Dra. Daniela',
+    titulo: `Consulta com ${nutriNome}`,
     dataHoraInicio: proximaConsulta.data_hora,
     duracaoMin: proximaConsulta.duracao_min,
     descricao: `Link da call: ${callUrl ?? ''}`,

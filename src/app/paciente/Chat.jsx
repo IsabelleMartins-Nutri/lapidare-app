@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase.js';
 import { useSession } from '../../lib/session.jsx';
+import { useTheme } from '../../lib/theme.jsx';
+import { iniciais } from '../../lib/utils.js';
 
 function fmtHora(iso) {
   if (!iso) return '';
@@ -10,6 +12,8 @@ function fmtHora(iso) {
 
 export default function ChatPaciente() {
   const { user, profile } = useSession();
+  const tema = useTheme();
+  const nutriNome = tema.nutri_nome ?? 'Sua nutri';
   const [msgs, setMsgs] = useState(undefined);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -94,14 +98,19 @@ export default function ChatPaciente() {
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 76px)' }}>
       {/* Banner da Dra. */}
       <div className="card cream" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 16px 10px', padding: '10px 14px' }}>
-        <div style={{
-          width: 36, height: 36, borderRadius: '50%',
-          background: 'var(--gold)', display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          fontSize: 12, fontWeight: 600, color: 'var(--ink)'
-        }}>DS</div>
+        {tema.nutri_foto_url ? (
+          <img src={tema.nutri_foto_url} alt={nutriNome}
+            style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover' }} />
+        ) : (
+          <div style={{
+            width: 36, height: 36, borderRadius: '50%',
+            background: 'var(--gold)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            fontSize: 12, fontWeight: 600, color: 'var(--ink)'
+          }}>{iniciais(nutriNome)}</div>
+        )}
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>Dra. Daniela Soares</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>{nutriNome}</div>
           <div style={{ fontSize: 10, color: 'var(--green)' }}>● Disponível por mensagem</div>
         </div>
       </div>
@@ -118,7 +127,7 @@ export default function ChatPaciente() {
           </div>
         ) : msgs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--muted)', fontSize: 12 }}>
-            Envie uma mensagem para a Dra. Daniela
+            Envie uma mensagem para {nutriNome}
           </div>
         ) : (
           msgs.map(m => (

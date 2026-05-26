@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase.js';
 import { useSession } from '../../lib/session.jsx';
+import { useTheme } from '../../lib/theme.jsx';
 import { iniciais, dataBR } from '../../lib/utils.js';
 
 const REFEICOES = ['Café da manhã', 'Lanche da manhã', 'Almoço', 'Lanche da tarde', 'Jantar', 'Ceia', 'Outro'];
@@ -18,6 +19,8 @@ async function getSignedUrl(path) {
 }
 
 export default function FeedPaciente() {
+  const tema = useTheme();
+  const nutriNome = tema.nutri_nome ?? 'Sua nutri';
   const { user, profile } = useSession();
   const [posts, setPosts] = useState(undefined);
   const [urls, setUrls] = useState({});
@@ -210,7 +213,7 @@ export default function FeedPaciente() {
             {p.legenda && <div className="feed-caption">{p.legenda}</div>}
             {p.comentario_nutri && (
               <div className="feed-comment">
-                <span className="who">Dra. Daniela</span>
+                <span className="who">{nutriNome}</span>
                 {p.comentario_nutri}
               </div>
             )}

@@ -25,6 +25,8 @@ export default function Personalizacao() {
     marca_subtitulo: '',
     logo_url: null,
     cor_texto_sidebar: '',  // vazio = auto-calcula contraste
+    nome: '',               // nome de exibição da nutri (aparece pras pacientes)
+    foto_url: null,         // foto de perfil da nutri
     cor_primaria: '#a08456',
     cor_secundaria: '#c9a96e',
     tipografia: 'classica',
@@ -41,6 +43,8 @@ export default function Personalizacao() {
       marca_subtitulo: profile.marca_subtitulo ?? '',
       logo_url: profile.logo_url ?? null,
       cor_texto_sidebar: profile.cor_texto_sidebar ?? '',
+      nome: profile.nome ?? '',
+      foto_url: profile.foto_url ?? null,
       cor_primaria: profile.cor_primaria ?? '#a08456',
       cor_secundaria: profile.cor_secundaria ?? '#c9a96e',
       tipografia: profile.tipografia ?? 'classica',
@@ -56,6 +60,8 @@ export default function Personalizacao() {
       marca_subtitulo: form.marca_subtitulo.trim() || null,
       logo_url: form.logo_url,
       cor_texto_sidebar: form.cor_texto_sidebar?.trim() || null,
+      nome: form.nome?.trim() || profile?.nome || 'Sua nutri',
+      foto_url: form.foto_url,
       cor_primaria: form.cor_primaria,
       cor_secundaria: form.cor_secundaria,
       tipografia: form.tipografia,
@@ -103,8 +109,43 @@ export default function Personalizacao() {
     setForm(f => ({ ...f, logo_url: null }));
   }
 
+  async function uploadFoto(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) return alert('Imagem muito grande (máx 2 MB).');
+    setUploading(true);
+
+    if (form.foto_url) {
+      try {
+        const u = new URL(form.foto_url);
+        const oldPath = u.pathname.split('/logos/')[1];
+        if (oldPath) await supabase.storage.from('logos').remove([oldPath]);
+      } catch { /* ignore */ }
+    }
+
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase();
+    const path = `${user.id}/foto_${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('logos')
+      .upload(path, file, { contentType: file.type, upsert: true });
+    if (upErr) {
+      setUploading(false);
+      return alert('Erro no upload: ' + upErr.message);
+    }
+    const { data } = supabase.storage.from('logos').getPublicUrl(path);
+    setForm(f => ({ ...f, foto_url: data.publicUrl }));
+    setUploading(false);
+  }
+
+  function removerFoto() {
+    if (!window.confirm('Remover foto?')) return;
+    setForm(f => ({ ...f, foto_url: null }));
+  }
+
   // Aplica preview ao vivo das mudanças de cor/tipografia
+  // IMPORTANTE: só roda quando profile JÁ carregou — senão sobrescreve com
+  // os defaults do form e a sidebar perde a personalização atual brevemente.
   useEffect(() => {
+    if (!profile) return;
     const r = document.documentElement;
     r.style.setProperty('--gold-deep', form.cor_primaria);
     r.style.setProperty('--amber',     form.cor_secundaria);
@@ -114,7 +155,7 @@ export default function Personalizacao() {
       r.style.setProperty('--dark-text', form.cor_texto_sidebar);
     }
     r.dataset.tipografia = form.tipografia;
-  }, [form.cor_primaria, form.cor_secundaria, form.tipografia, form.cor_texto_sidebar]);
+  }, [profile, form.cor_primaria, form.cor_secundaria, form.tipografia, form.cor_texto_sidebar]);
 
   return (
     <>
@@ -170,6 +211,62 @@ export default function Personalizacao() {
               </div>
               {form.logo_url && (
                 <button onClick={removerLogo}
+                  style={{
+                    background: 'none', border: '0.5px solid var(--red)',
+                    borderRadius: 6, padding: '4px 8px',
+                    color: 'var(--red)', cursor: 'pointer', fontSize: 12,
+                  }}>
+                  <i className="ti ti-trash" aria-hidden="true"></i> Remover
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Meu perfil — nome e foto que aparecem PRAS PACIENTES */}
+          <div className="card" style={{ padding: 18, marginBottom: 14 }}>
+            <div className="card-title" style={{ marginBottom: 4 }}>Meu perfil</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
+              Como você aparece <strong>pras suas pacientes</strong> no chat, feed e banners.
+              <br />Diferente da marca (que aparece na sidebar e Login).
+            </div>
+
+            <label className="form-lbl">Seu nome (aparece pras pacientes)</label>
+            <input value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))}
+              placeholder='Ex: "Dra. Kelly Oliveira", "Sara Dias", "Nutri Ana"' />
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4, fontStyle: 'italic' }}>
+              Aparece como remetente no chat e nos comentários do feed da paciente.
+            </div>
+
+            <label className="form-lbl" style={{ marginTop: 14 }}>Sua foto de perfil</label>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: 12, border: '0.5px dashed var(--border)',
+              borderRadius: 10, background: 'var(--bg2)',
+            }}>
+              {form.foto_url ? (
+                <img src={form.foto_url} alt="Foto"
+                  style={{
+                    width: 60, height: 60, borderRadius: '50%', objectFit: 'cover',
+                    background: 'var(--white)',
+                  }} />
+              ) : (
+                <div style={{
+                  width: 60, height: 60, borderRadius: '50%',
+                  background: 'var(--white)', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--text3)', fontSize: 11, fontWeight: 500,
+                }}>Sem foto</div>
+              )}
+              <div style={{ flex: 1 }}>
+                <input type="file" accept="image/*" onChange={uploadFoto}
+                  disabled={uploading}
+                  style={{ fontSize: 12 }} />
+                <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                  JPG, PNG ou SVG · máx 2 MB · ideal quadrada (300×300px)
+                </div>
+              </div>
+              {form.foto_url && (
+                <button onClick={removerFoto}
                   style={{
                     background: 'none', border: '0.5px solid var(--red)',
                     borderRadius: 6, padding: '4px 8px',
@@ -352,6 +449,47 @@ export default function Personalizacao() {
         </div>
       </div>
 
+      {/* Banner GRANDE de sucesso (aparece após salvar) */}
+      {feedback && (
+        <div style={{
+          marginTop: 18, padding: '20px 24px',
+          background: 'linear-gradient(135deg, #fff3b8, #ffe88a)',
+          border: '2px solid #c9a233',
+          borderRadius: 14,
+          display: 'flex', alignItems: 'center', gap: 16,
+          boxShadow: '0 6px 20px rgba(201,162,51,0.18)',
+        }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: '50%',
+            background: '#c9a233', color: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <i className="ti ti-refresh" style={{ fontSize: 26 }} aria-hidden="true"></i>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#5a4500', marginBottom: 4 }}>
+              ✅ Personalização salva!
+            </div>
+            <div style={{ fontSize: 14, color: '#5a4500', lineHeight: 1.5 }}>
+              <strong>Aperte F5 (ou Cmd+R no Mac)</strong> agora pra ver tudo aplicado no painel.
+              Sem isso, algumas mudanças ficam invisíveis até a próxima atualização da página.
+            </div>
+          </div>
+          <button onClick={() => window.location.reload()}
+            style={{
+              background: '#5a4500', color: '#fff',
+              padding: '10px 18px', borderRadius: 8,
+              fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              border: 'none', whiteSpace: 'nowrap',
+              fontFamily: 'var(--font-sans)',
+            }}>
+            <i className="ti ti-refresh" style={{ marginRight: 6 }} aria-hidden="true"></i>
+            Recarregar agora
+          </button>
+        </div>
+      )}
+
       {/* Salvar */}
       <div style={{
         marginTop: 18, padding: 14,
@@ -362,7 +500,6 @@ export default function Personalizacao() {
       }}>
         <div style={{ flex: 1 }}>
           {erro && <div style={{ color: 'var(--red)', fontSize: 13 }}>{erro}</div>}
-          {feedback && <div style={{ color: 'var(--green)', fontSize: 13 }}>{feedback}</div>}
         </div>
         <button className="btn" onClick={salvar} disabled={busy}>
           <i className="ti ti-device-floppy" aria-hidden="true"></i> {busy ? 'Salvando...' : 'Salvar personalização'}

@@ -1298,6 +1298,9 @@ alter table public.nutris add column if not exists mensagem_termo  text;
 -- por padrão; aqui a nutri pode forçar uma cor específica se quiser controle total)
 alter table public.nutris add column if not exists cor_texto_sidebar text;
 
+-- Foto de perfil da nutri (aparece pras pacientes no chat, feed, banners)
+alter table public.nutris add column if not exists foto_url text;
+
 alter table public.nutris drop constraint if exists nutris_tipografia_check;
 alter table public.nutris add constraint nutris_tipografia_check
   check (tipografia in ('classica', 'modern', 'minimal', 'romantica'));
@@ -1335,7 +1338,8 @@ create or replace function public.buscar_personalizacao_nutri(p_nutri_id uuid)
 returns table(
   marca_nome text, marca_subtitulo text, logo_url text,
   cor_primaria text, cor_secundaria text, tipografia text,
-  mensagem_login text, mensagem_termo text, cor_texto_sidebar text
+  mensagem_login text, mensagem_termo text, cor_texto_sidebar text,
+  nutri_nome text, nutri_foto_url text
 )
 language sql security definer set search_path = public
 as $$
@@ -1345,7 +1349,9 @@ as $$
     coalesce(cor_primaria,   '#a08456'),
     coalesce(cor_secundaria, '#c9a96e'),
     coalesce(tipografia,     'classica'),
-    mensagem_login, mensagem_termo, cor_texto_sidebar
+    mensagem_login, mensagem_termo, cor_texto_sidebar,
+    coalesce(nome, 'Sua nutri') as nutri_nome,
+    foto_url as nutri_foto_url
   from public.nutris where id = p_nutri_id limit 1;
 $$;
 grant execute on function public.buscar_personalizacao_nutri(uuid) to anon, authenticated;
