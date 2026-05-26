@@ -97,12 +97,27 @@ export function ThemeProvider({ children }) {
     r.style.setProperty('--ink', primaria);
 
     // ─── Variantes do --dark usadas dentro da SIDEBAR ───
-    // (hover, borda, divider, texto, etc · todas derivadas da primária)
-    r.style.setProperty('--dark-shade', mistura(primaria, '#000000', 0.15)); // hover/active bg
-    r.style.setProperty('--dark-line',  mistura(primaria, '#000000', 0.25)); // borda do toggle
-    r.style.setProperty('--dark-label', mistura(primaria, '#000000', 0.40)); // group label (sutil)
-    r.style.setProperty('--dark-text',  mistura(primaria, '#ffffff', 0.88)); // texto claro principal
-    r.style.setProperty('--dark-muted', mistura(primaria, '#ffffff', 0.45)); // texto inativo
+    // Calcula luminância da primária pra escolher texto que CONTRASTA:
+    //   - Primária ESCURA (navy, preto, marrom escuro) → texto CLARO
+    //   - Primária CLARA (rose gold, lavanda, tan)     → texto ESCURO
+    const lum = luminancia(primaria);
+    const primariaEhClara = lum > 0.5;
+
+    if (primariaEhClara) {
+      // Primária clara: hover/borda ficam MAIS ESCUROS, texto fica PRETO
+      r.style.setProperty('--dark-shade', mistura(primaria, '#000000', 0.12));
+      r.style.setProperty('--dark-line',  mistura(primaria, '#000000', 0.22));
+      r.style.setProperty('--dark-label', mistura(primaria, '#000000', 0.45));
+      r.style.setProperty('--dark-text',  '#1a1612');
+      r.style.setProperty('--dark-muted', mistura(primaria, '#000000', 0.55));
+    } else {
+      // Primária escura: hover/borda ficam MAIS ESCUROS ainda, texto fica BRANCO
+      r.style.setProperty('--dark-shade', mistura(primaria, '#000000', 0.15));
+      r.style.setProperty('--dark-line',  mistura(primaria, '#000000', 0.25));
+      r.style.setProperty('--dark-label', mistura(primaria, '#000000', 0.40));
+      r.style.setProperty('--dark-text',  '#faf8f5');
+      r.style.setProperty('--dark-muted', mistura(primaria, '#ffffff', 0.55));
+    }
 
     // Versões "soft" derivadas (background sutil com mesma matiz)
     r.style.setProperty('--gold-soft', mistura(primaria, '#ffffff', 0.82));
@@ -147,4 +162,16 @@ function parseHex(hex) {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex ?? '');
   if (!m) return null;
   return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+}
+
+/**
+ * Luminância relativa percebida (WCAG-like, simplificado).
+ * Retorna 0 (preto puro) a 1 (branco puro).
+ * Usado pra decidir se a cor de texto deve ser clara ou escura.
+ */
+function luminancia(hex) {
+  const c = parseHex(hex);
+  if (!c) return 0.5;
+  // Fórmula percebida (não a WCAG exata, mas suficiente pra decidir contraste)
+  return (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / 255;
 }
