@@ -3,6 +3,26 @@ import { supabase } from '../../lib/supabase.js';
 import { useSession } from '../../lib/session.jsx';
 import { dataBR } from '../../lib/utils.js';
 
+/**
+ * Renderiza uma substituição com segurança — aceita string OU objeto.
+ *
+ * Antes era só `→ {s}` direto no JSX, mas se a Skill 6 (ChatGPT) gerasse
+ * o JSON com substituições como objetos (ex: `{nome: "Pão", qty: "2 fatias"}`)
+ * em vez de strings simples, React crashava a tela inteira (Erro:
+ * "Objects are not valid as a React child"). Resultado: tela branca ao
+ * clicar em "Ver substituições".
+ *
+ * Agora aceita os 2 formatos:
+ *   - string: "Pão integral - 2 fatias" → usa direto
+ *   - objeto: { nome: "Pão", qty: "2 fatias", kcal: 80 } → monta "Pão · 2 fatias · 80 kcal"
+ */
+function formatarSub(s) {
+  if (typeof s === 'string') return s;
+  if (!s || typeof s !== 'object') return String(s ?? '');
+  const partes = [s.nome, s.qty, s.kcal && `${s.kcal} kcal`].filter(Boolean);
+  return partes.length ? partes.join(' · ') : JSON.stringify(s);
+}
+
 export default function Plano() {
   const { user } = useSession();
   const [plano, setPlano] = useState(undefined); // undefined=loading, null=vazio
@@ -117,7 +137,9 @@ export default function Plano() {
                   </button>
                   {openSubs[`${ri}-${ai}`] && (
                     <div className="subs-list">
-                      {al.subs.map((s, si) => <div key={si} className="sub-item">→ {s}</div>)}
+                      {al.subs.map((s, si) => (
+                        <div key={si} className="sub-item">→ {formatarSub(s)}</div>
+                      ))}
                     </div>
                   )}
                 </>

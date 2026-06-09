@@ -93,6 +93,29 @@ export function validarPlano(obj) {
     if (r.alimentos && !Array.isArray(r.alimentos)) {
       return { ok: false, erro: `"alimentos" da refeição #${i + 1} precisa ser um array.` };
     }
+    // Valida formato das substituições — bug recorrente: a Skill 6 às vezes gera
+    // subs como objetos `{nome, qty}` em vez de strings, e isso crashava a tela
+    // do plano da paciente (objects are not valid as React child).
+    if (Array.isArray(r.alimentos)) {
+      for (let j = 0; j < r.alimentos.length; j++) {
+        const al = r.alimentos[j];
+        if (al?.subs === undefined || al.subs === null) continue;
+        if (!Array.isArray(al.subs)) {
+          return {
+            ok: false,
+            erro: `Refeição "${r.nome}", alimento "${al.nome || `#${j + 1}`}": o campo "subs" precisa ser um array (lista de substituições).`,
+          };
+        }
+        for (let k = 0; k < al.subs.length; k++) {
+          if (al.subs[k] !== null && typeof al.subs[k] === 'object') {
+            return {
+              ok: false,
+              erro: `Refeição "${r.nome}", alimento "${al.nome || `#${j + 1}`}", substituição #${k + 1}: precisa ser texto simples (string), não objeto. Exemplo correto: "Pão integral - 2 fatias".`,
+            };
+          }
+        }
+      }
+    }
   }
   return { ok: true };
 }

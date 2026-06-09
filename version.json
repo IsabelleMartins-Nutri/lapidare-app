@@ -1,5 +1,5 @@
 {
-  "version": "1.8.0",
+  "version": "1.8.1",
   "released_at": "2026-06-08",
-  "notes": "Detecção automática de atualização + versão visível"
+  "notes": "Fix: tela branca ao abrir substituições quando o JSON do plano tinha objetos em vez de strings"
 }
