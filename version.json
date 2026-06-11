@@ -1,5 +1,5 @@
 {
-  "version": "1.10.2",
+  "version": "1.10.3",
   "released_at": "2026-06-09",
-  "notes": "Renomeada 'Anamnese' para 'Atendimento' em todos os labels visíveis (área que a nutri usa durante a consulta). Fix: comparação de versão no banner."
+  "notes": "Fix crítico: setup.sql falhava ('relation listas_compras does not exist') em instalação nova porque o ALTER TABLE ficava antes do CREATE TABLE"
 }

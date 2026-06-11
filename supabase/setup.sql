@@ -96,11 +96,6 @@ create table if not exists public.substituicoes (
 create index if not exists substituicoes_paciente_id_idx on public.substituicoes(paciente_id, publicado_em desc);
 create index if not exists substituicoes_nutri_id_idx on public.substituicoes(nutri_id);
 
--- v1.10.0: coluna pdf_url nas 3 tabelas (Plano, Substituições, Compras)
-alter table public.planos          add column if not exists pdf_url text;
-alter table public.substituicoes   add column if not exists pdf_url text;
-alter table public.listas_compras  add column if not exists pdf_url text;
-
 -- 2.4 Listas de compras --------------------------------------------
 create table if not exists public.listas_compras (
   id            uuid primary key default gen_random_uuid(),
@@ -110,6 +105,12 @@ create table if not exists public.listas_compras (
   publicado_em  timestamptz not null default now()
 );
 create index if not exists listas_compras_paciente_id_idx on public.listas_compras(paciente_id, publicado_em desc);
+
+-- v1.10.0: coluna pdf_url nas 3 tabelas (Plano, Substituições, Compras)
+-- DEVE ficar APÓS a criação das 3 tabelas (planos, substituicoes, listas_compras)
+alter table public.planos          add column if not exists pdf_url text;
+alter table public.substituicoes   add column if not exists pdf_url text;
+alter table public.listas_compras  add column if not exists pdf_url text;
 
 -- 2.5 Prescrições (documentos PDF) ---------------------------------
 create table if not exists public.prescricoes (
