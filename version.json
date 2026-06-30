@@ -1,5 +1,5 @@
 {
-  "version": "1.14.3",
+  "version": "1.14.4",
   "released_at": "2026-06-30",
-  "notes": "'Tipo de plano' no cadastro de paciente agora puxa automaticamente os Serviços ATIVOS cadastrados em 'Meus serviços'. Resolvido: confusão de várias nutris que cadastravam serviços esperando que aparecessem no cadastro."
+  "notes": "Avaliação antropométrica agora pode ser registrada SÓ com PDF (sem precisar preencher peso). Útil pra quem usa Shaped/Dietbox e tem o PDF da avaliação completa."
 }

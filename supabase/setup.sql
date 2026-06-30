@@ -152,7 +152,7 @@ create table if not exists public.peso_registros (
   id            uuid primary key default gen_random_uuid(),
   paciente_id   uuid not null references public.pacientes(id) on delete cascade,
   nutri_id      uuid references public.nutris(id) on delete set null,
-  kg            numeric(5,2) not null,
+  kg            numeric(5,2),  -- v1.14.4: nullable pra permitir avaliação só com PDF
   altura_cm     numeric(5,2),
   cintura_cm    numeric(5,2),
   quadril_cm    numeric(5,2),
@@ -177,6 +177,8 @@ alter table public.peso_registros
   add column if not exists obs         text,
   add column if not exists pdf_url     text,
   add column if not exists created_at  timestamptz not null default now();
+-- v1.14.4: torna peso opcional (permitir avaliação só com PDF)
+alter table public.peso_registros alter column kg drop not null;
 create index if not exists peso_registros_paciente_id_idx on public.peso_registros(paciente_id, data);
 
 -- 2.8 Feed de pratos (fotos) ---------------------------------------

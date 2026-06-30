@@ -503,8 +503,12 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
 
   async function salvar() {
     setFeedback(null);
-    if (!form.data || !form.kg) {
-      return setFeedback({ tipo: 'erro', msg: 'Data e peso são obrigatórios.' });
+    // Permite registrar com peso OU PDF (pelo menos um). Útil quando a nutri
+    // usa Shaped/sistema externo e quer só anexar o PDF da avaliação sem
+    // re-digitar os números.
+    if (!form.data) return setFeedback({ tipo: 'erro', msg: 'A data é obrigatória.' });
+    if (!form.kg && !pdfFile) {
+      return setFeedback({ tipo: 'erro', msg: 'Preencha o peso OU anexe um PDF (pelo menos um).' });
     }
     setBusy(true);
     let pdfUrl = null;
@@ -564,7 +568,7 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
         <div className="card-header">
           <div>
             <div className="card-title">Nova avaliação antropométrica</div>
-            <div className="card-sub">Registre peso e medidas — a paciente verá o gráfico de evolução</div>
+            <div className="card-sub">Preencha peso/medidas OU anexe um PDF (ex: avaliação do Shaped) — pelo menos um dos dois</div>
           </div>
         </div>
         <div className="card-body">
@@ -638,7 +642,7 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
           {feedback && <FeedbackInline f={feedback} />}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-            <button className="btn" onClick={salvar} disabled={busy || !form.kg}>
+            <button className="btn" onClick={salvar} disabled={busy || (!form.kg && !pdfFile)}>
               <i className="ti ti-check" aria-hidden="true"></i> {busy ? 'Salvando...' : 'Registrar avaliação'}
             </button>
           </div>
