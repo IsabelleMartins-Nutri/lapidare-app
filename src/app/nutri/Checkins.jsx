@@ -93,8 +93,8 @@ export default function Checkins() {
     const { error } = await supabase.from('checkin_envios').insert({
       nutri_id: user.id,
       paciente_id: paciente.id,
-      nome: template.nome ?? 'Check-in',
-      tipo: 'recorrente',
+      nome: template.nome ?? 'Questionário',
+      tipo: template.tipo === 'pre_consulta' ? 'pre_consulta' : 'recorrente',
       perguntas: template.perguntas,
     });
     if (error) return mostraToast('Erro: ' + error.message);
@@ -116,11 +116,12 @@ export default function Checkins() {
     if (!template) return mostraToast('Selecione um template.');
     if (pacientes.length === 0) return mostraToast('Sem pacientes cadastradas.');
     if (!window.confirm(`Enviar "${template.nome}" para todas as ${pacientes.length} pacientes?`)) return;
+    const tipoEnvio = template.tipo === 'pre_consulta' ? 'pre_consulta' : 'recorrente';
     const linhas = pacientes.map(p => ({
       nutri_id: user.id,
       paciente_id: p.id,
-      nome: template.nome ?? 'Check-in',
-      tipo: 'recorrente',
+      nome: template.nome ?? 'Questionário',
+      tipo: tipoEnvio,
       perguntas: template.perguntas,
     }));
     const { error } = await supabase.from('checkin_envios').insert(linhas);
@@ -134,7 +135,7 @@ export default function Checkins() {
 
   return (
     <>
-      <div className="page-title">Check-ins</div>
+      <div className="page-title">Questionários</div>
       <div className="page-sub">
         {tab === 'enviar'      && 'Envie check-ins, veja quem respondeu e quem precisa de lembrete'}
         {tab === 'respostas'   && `${respondidos.length} respondido${respondidos.length === 1 ? '' : 's'} no total`}
@@ -416,17 +417,20 @@ async function processarAgendamentosVencidos(nutriId, agendamentos, mostraToast)
 
     if (pacientesIds.length === 0) continue;
 
-    // Cria envios
+    // Cria envios — respeita tipo do template (recorrente | pre_consulta)
+    const tipoEnvio = ag.template?.tipo === 'pre_consulta' ? 'pre_consulta' : 'recorrente';
     const linhas = pacientesIds.map(pid => ({
       nutri_id: nutriId,
       paciente_id: pid,
+      nome: ag.template?.nome ?? 'Questionário',
+      tipo: tipoEnvio,
       perguntas: ag.template.perguntas,
     }));
     const { error } = await supabase.from('checkin_envios').insert(linhas);
     if (!error) total += pacientesIds.length;
   }
 
-  if (total > 0) mostraToast(`${total} check-in${total === 1 ? '' : 's'} disparado${total === 1 ? '' : 's'} automaticamente`);
+  if (total > 0) mostraToast(`${total} questionário${total === 1 ? '' : 's'} disparado${total === 1 ? '' : 's'} automaticamente`);
   return total;
 }
 
@@ -500,6 +504,7 @@ function SelecionarEnviarTemplate({ templates, padrao, onEscolher }) {
                     <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                       {t.perguntas?.length ?? 0} perguntas
                       {t.paciente_id && ' · personalizado'}
+                      {t.tipo === 'pre_consulta' && ' · envia no cadastro'}
                     </div>
                   </div>
                   {isPadrao && (
@@ -543,6 +548,7 @@ function SelecionarTemplateModal({ templates, onClose, onEscolher, title, action
                   <div style={{ fontSize: 14, fontWeight: 500 }}>{t.nome}</div>
                   <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
                     {t.perguntas?.length ?? 0} perguntas
+                    {t.tipo === 'pre_consulta' && ' · envia no cadastro'}
                   </div>
                 </div>
                 {t.is_padrao && <span style={{

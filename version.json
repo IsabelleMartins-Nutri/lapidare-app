@@ -1,5 +1,5 @@
 {
-  "version": "1.12.1",
+  "version": "1.13.0",
   "released_at": "2026-06-30",
-  "notes": "Fix: erros 'Could not find column' agora dão fallback automático em vez de travar. Aplicado em Plano, Substituições, Compras, Avaliação e edição de Sexo no perfil."
+  "notes": "Unificação 'Check-ins' + 'Pré-consulta' → 'Questionários'. Fix: enviar template respeita o tipo correto. Banner do paciente mostra o nome real que a nutri deu ao questionário."
 }

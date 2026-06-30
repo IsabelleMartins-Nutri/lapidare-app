@@ -20,7 +20,6 @@ import ChatNutri from './app/nutri/Chat.jsx';
 import FeedNutri from './app/nutri/Feed.jsx';
 import PrescricoesNutri from './app/nutri/Prescricoes.jsx';
 import Checkins from './app/nutri/Checkins.jsx';
-import Questionarios from './app/nutri/Questionarios.jsx';
 import Cadastrar from './app/nutri/Cadastrar.jsx';
 import Cerebro from './app/nutri/Cerebro.jsx';
 import Servicos from './app/nutri/Servicos.jsx';
@@ -65,7 +64,8 @@ export default function App() {
             <Route path="/nutri/feed" element={<FeedNutri />} />
             <Route path="/nutri/prescricoes" element={<PrescricoesNutri />} />
             <Route path="/nutri/checkins" element={<Checkins />} />
-            <Route path="/nutri/questionarios" element={<Questionarios />} />
+            {/* Compat: rota antiga "questionarios" redireciona pra tela unificada de Questionários */}
+            <Route path="/nutri/questionarios" element={<Navigate to="/nutri/checkins" replace />} />
             <Route path="/nutri/cadastrar" element={<Cadastrar />} />
             <Route path="/nutri/cerebro" element={<Cerebro />} />
             <Route path="/nutri/servicos" element={<Servicos />} />

@@ -344,21 +344,14 @@ export default function Inicio() {
               color: ckUrgente ? 'var(--ink)' : 'var(--gold-deep)',
               fontWeight: 500, marginBottom: 2,
             }}>
-              {ckUrgente
-                ? 'Lembrete · pendente'
-                : checkinPendente.tipo === 'pre_consulta'
-                  ? 'Check-in pré-consulta'
-                  : 'Check-in pendente'}
+              {ckUrgente ? 'Lembrete · pendente' : 'Questionário pendente'}
             </div>
             <div className="serif" style={{ fontSize: 18, lineHeight: 1.1, marginBottom: 2 }}>
-              {checkinPendente.tipo === 'pre_consulta'
-                ? 'Antes da nossa primeira consulta'
-                : (checkinPendente.nome || 'Sua Dra. pediu um check-in')}
+              {checkinPendente.nome
+                || (checkinPendente.tipo === 'pre_consulta' ? 'Antes da nossa primeira consulta' : 'Sua Dra. pediu um questionário')}
             </div>
             <div style={{ fontSize: 11, color: ckUrgente ? 'var(--ink)' : 'var(--muted)', opacity: ckUrgente ? .8 : 1 }}>
-              {checkinPendente.tipo === 'pre_consulta'
-                ? 'Toque para responder — leva uns 5 minutos'
-                : 'Toque para responder · leva uns 3 minutos'}
+              Toque para responder
             </div>
           </div>
           <i className="ti ti-chevron-right" style={{ fontSize: 18, color: ckUrgente ? 'var(--ink)' : 'var(--muted)', flexShrink: 0 }} aria-hidden="true"></i>

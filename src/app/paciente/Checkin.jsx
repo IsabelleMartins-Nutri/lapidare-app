@@ -90,7 +90,7 @@ export default function Checkin() {
           fontSize: 36, marginBottom: 24,
           animation: 'view-in .4s cubic-bezier(.175,.885,.32,1.275)',
         }}>✨</div>
-        <div className="serif" style={{ fontSize: 28, marginBottom: 8 }}>Check-in enviado!</div>
+        <div className="serif" style={{ fontSize: 28, marginBottom: 8 }}>Questionário enviado!</div>
         <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, maxWidth: 280 }}>
           Obrigada por compartilhar como está se sentindo.<br />
           A Dra. vai analisar suas respostas em breve.
@@ -110,14 +110,13 @@ export default function Checkin() {
           fontSize: 10, letterSpacing: '.22em', textTransform: 'uppercase',
           color: 'var(--gold)', marginBottom: 4,
         }}>
-          {envio.tipo === 'pre_consulta' ? 'Check-in pré-consulta' : 'Check-in'}
+          Questionário
         </div>
         <div className="serif" style={{ fontSize: 22, lineHeight: 1.1, marginBottom: 2 }}>
           {jaRespondido
             ? 'Suas respostas'
-            : envio.tipo === 'pre_consulta'
-              ? 'Antes da primeira consulta'
-              : (envio.nome || 'Como você está esta semana?')}
+            : (envio.nome
+                || (envio.tipo === 'pre_consulta' ? 'Antes da primeira consulta' : 'Como você está esta semana?'))}
         </div>
         <div style={{ fontSize: 11, opacity: .55 }}>
           {jaRespondido
