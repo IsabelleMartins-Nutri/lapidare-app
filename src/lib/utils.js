@@ -68,6 +68,40 @@ export function dataConsultaBR(iso) {
 }
 
 /**
+ * Insert/update/upsert resiliente a colunas faltantes no Supabase.
+ *
+ * Problema que resolve: quando a gente adiciona coluna nova (ex: pdf_url),
+ * a nutri que faz Sync Fork mas esquece de rodar o delta SQL vê o erro
+ * "Could not find the 'pdf_url' column ... in the schema cache". O cadastro
+ * inteiro trava.
+ *
+ * Esse helper detecta o erro, retira os campos opcionais que faltam no banco,
+ * e retenta. Retorna { data, error, omitidos } — `omitidos` é a lista de
+ * campos que foram retirados (use pra avisar a nutri pra rodar o SQL).
+ *
+ * Uso:
+ *   const { error, omitidos } = await omitColunasFaltantes(
+ *     payload,
+ *     ['pdf_url', 'sexo'],
+ *     (p) => supabase.from('peso_registros').insert(p),
+ *   );
+ *   if (omitidos.length) alert(`${omitidos.join(', ')} não salvo — rode o SQL.`);
+ */
+export async function omitColunasFaltantes(payload, camposOpcionais, executar) {
+  let res = await executar(payload);
+  let omitidos = [];
+  if (res?.error && /schema cache|Could not find.*column/i.test(res.error.message || '')) {
+    omitidos = camposOpcionais.filter(c => res.error.message.includes(`'${c}'`));
+    if (omitidos.length > 0) {
+      const payloadLimpo = { ...payload };
+      omitidos.forEach(f => delete payloadLimpo[f]);
+      res = await executar(payloadLimpo);
+    }
+  }
+  return { ...res, omitidos };
+}
+
+/**
  * Helper de concordância de gênero — retorna `masc` se sexo for masculino,
  * `fem` em qualquer outro caso (default: feminino).
  *

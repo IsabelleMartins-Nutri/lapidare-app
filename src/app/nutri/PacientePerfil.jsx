@@ -5,6 +5,7 @@ import { useSession } from '../../lib/session.jsx';
 import {
   dataBR, iniciais,
   validarPlano, validarLista, validarSubstituicoes, contarItensLista,
+  omitColunasFaltantes,
 } from '../../lib/utils.js';
 import { TEMPLATE_PADRAO } from '../../lib/checkinDefault.js';
 import CheckinForm from '../../components/CheckinForm.jsx';
@@ -86,7 +87,18 @@ export default function PacientePerfil() {
     const { error } = await supabase.from('pacientes')
       .update({ sexo: novoSexo }).eq('id', id);
     setSalvandoSexo(false);
-    if (error) { alert('Erro ao atualizar sexo: ' + error.message); return; }
+    if (error) {
+      if (/sexo.*schema cache|Could not find.*sexo/i.test(error.message)) {
+        alert(
+          'Seu Supabase ainda não foi atualizado pra v1.11.0 — a coluna "sexo" não existe.\n\n' +
+          'Rode o SQL atualizado:\n' +
+          'github.com/danielasoares-rd/lapidare-app/blob/main/supabase/delta-v1.11.0.sql'
+        );
+      } else {
+        alert('Erro ao atualizar sexo: ' + error.message);
+      }
+      return;
+    }
     carregar();
   }
 
@@ -517,10 +529,16 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
       obs: form.obs.trim() || null,
       pdf_url: pdfUrl,
     };
-    const { error } = await supabase.from('peso_registros').insert(payload);
+    const { error, omitidos } = await omitColunasFaltantes(
+      payload, ['pdf_url'],
+      (p) => supabase.from('peso_registros').insert(p),
+    );
     setBusy(false);
     if (error) return setFeedback({ tipo: 'erro', msg: error.message });
-    setFeedback({ tipo: 'ok', msg: `Avaliação registrada.${pdfUrl ? ' PDF anexado.' : ''}` });
+    const msgOmitido = omitidos.length
+      ? ` (PDF não salvo — rode o SQL atualizado: github.com/danielasoares-rd/lapidare-app/blob/main/supabase/delta-v1.12.0.sql)`
+      : (pdfUrl ? ' PDF anexado.' : '');
+    setFeedback({ tipo: omitidos.length ? 'erro' : 'ok', msg: `Avaliação registrada.${msgOmitido}` });
     setForm(novaAvaliacao());
     setPdfFile(null);
     carregar();
@@ -723,16 +741,23 @@ function PublicarPlano({ pacienteId, nutriId }) {
       return setFeedback({ tipo: 'erro', msg: e.message });
     }
 
-    const { error } = await supabase.from('planos').insert({
+    const planoPayload = {
       paciente_id: pacienteId,
       nutri_id: nutriId,
       dados,
       validade: validade || dados.validade || null,
       pdf_url: pdfUrl,
-    });
+    };
+    const { error, omitidos } = await omitColunasFaltantes(
+      planoPayload, ['pdf_url'],
+      (p) => supabase.from('planos').insert(p),
+    );
     setBusy(false);
     if (error) return setFeedback({ tipo: 'erro', msg: error.message });
-    setFeedback({ tipo: 'ok', msg: `Plano publicado!${pdfUrl ? ' PDF anexado.' : ''} A paciente verá agora.` });
+    const aviso = omitidos.length
+      ? ` ATENÇÃO: PDF não foi salvo. Rode o SQL: github.com/danielasoares-rd/lapidare-app/blob/main/supabase/delta-v1.10.0.sql`
+      : (pdfUrl ? ' PDF anexado.' : '');
+    setFeedback({ tipo: omitidos.length ? 'erro' : 'ok', msg: `Plano publicado!${aviso} A paciente verá agora.` });
     setJson('');
     setValidade('');
     setPdfFile(null);
@@ -867,15 +892,22 @@ function PublicarSubstituicoes({ pacienteId, nutriId }) {
       return setFeedback({ tipo: 'erro', msg: e.message });
     }
 
-    const { error } = await supabase.from('substituicoes').insert({
+    const subsPayload = {
       paciente_id: pacienteId,
       nutri_id: nutriId,
       dados,
       pdf_url: pdfUrl,
-    });
+    };
+    const { error, omitidos } = await omitColunasFaltantes(
+      subsPayload, ['pdf_url'],
+      (p) => supabase.from('substituicoes').insert(p),
+    );
     setBusy(false);
     if (error) return setFeedback({ tipo: 'erro', msg: error.message });
-    setFeedback({ tipo: 'ok', msg: `Substituições publicadas!${pdfUrl ? ' PDF anexado.' : ''} ${dados.length} alimentos com opções de troca.` });
+    const aviso = omitidos.length
+      ? ` ATENÇÃO: PDF não foi salvo. Rode o SQL: github.com/danielasoares-rd/lapidare-app/blob/main/supabase/delta-v1.10.0.sql`
+      : (pdfUrl ? ' PDF anexado.' : '');
+    setFeedback({ tipo: omitidos.length ? 'erro' : 'ok', msg: `Substituições publicadas!${aviso} ${dados.length} alimentos com opções de troca.` });
     setJson('');
     setPdfFile(null);
     carregar();
@@ -1001,15 +1033,22 @@ function PublicarLista({ pacienteId, nutriId }) {
       return setFeedback({ tipo: 'erro', msg: e.message });
     }
 
-    const { error } = await supabase.from('listas_compras').insert({
+    const listaPayload = {
       paciente_id: pacienteId,
       nutri_id: nutriId,
       dados,
       pdf_url: pdfUrl,
-    });
+    };
+    const { error, omitidos } = await omitColunasFaltantes(
+      listaPayload, ['pdf_url'],
+      (p) => supabase.from('listas_compras').insert(p),
+    );
     setBusy(false);
     if (error) return setFeedback({ tipo: 'erro', msg: error.message });
-    setFeedback({ tipo: 'ok', msg: `Lista publicada!${pdfUrl ? ' PDF anexado.' : ''} A paciente verá agora.` });
+    const aviso = omitidos.length
+      ? ` ATENÇÃO: PDF não foi salvo. Rode o SQL: github.com/danielasoares-rd/lapidare-app/blob/main/supabase/delta-v1.10.0.sql`
+      : (pdfUrl ? ' PDF anexado.' : '');
+    setFeedback({ tipo: omitidos.length ? 'erro' : 'ok', msg: `Lista publicada!${aviso} A paciente verá agora.` });
     setJson('');
     setPdfFile(null);
     carregar();
