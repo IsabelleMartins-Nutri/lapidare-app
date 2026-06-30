@@ -58,6 +58,9 @@ alter table public.nutris add column if not exists meta_mensal         numeric(1
 alter table public.nutris add column if not exists gastos_fixos        numeric(10,2);
 alter table public.nutris add column if not exists ticket_medio_alvo   numeric(10,2);
 alter table public.nutris add column if not exists horas_semanais      integer;
+-- v1.14.0: lista de objetivos customizada pela nutri (aparece no cadastro de paciente)
+alter table public.nutris add column if not exists objetivos           jsonb
+  default '["Emagrecimento", "Hipertrofia", "Reeducação alimentar", "Saúde geral", "Performance esportiva"]'::jsonb;
 
 -- 2.2 Pacientes -----------------------------------------------------
 create table if not exists public.pacientes (

@@ -1,5 +1,5 @@
 {
-  "version": "1.13.0",
+  "version": "1.14.0",
   "released_at": "2026-06-30",
-  "notes": "Unificação 'Check-ins' + 'Pré-consulta' → 'Questionários'. Fix: enviar template respeita o tipo correto. Banner do paciente mostra o nome real que a nutri deu ao questionário."
+  "notes": "Nutri pode customizar as opções de 'Objetivo' do cadastro da paciente — útil pra quem atende nicho específico (saúde da mulher, esportiva, etc). Editado em Personalização."
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase.js';
 import { useSession } from '../../lib/session.jsx';
+import { omitColunasFaltantes } from '../../lib/utils.js';
 
 const TIPOGRAFIAS = [
   { id: 'classica',  nome: 'Clássica',  desc: 'Cormorant + Inter — elegante e atemporal' },
@@ -30,6 +31,7 @@ export default function Personalizacao() {
     cor_primaria: '#a08456',
     cor_secundaria: '#c9a96e',
     tipografia: 'classica',
+    objetivos: [],          // lista de objetivos custom (cadastro de paciente)
   });
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState(null);
@@ -48,6 +50,9 @@ export default function Personalizacao() {
       cor_primaria: profile.cor_primaria ?? '#a08456',
       cor_secundaria: profile.cor_secundaria ?? '#c9a96e',
       tipografia: profile.tipografia ?? 'classica',
+      objetivos: Array.isArray(profile.objetivos) && profile.objetivos.length > 0
+        ? profile.objetivos
+        : ['Emagrecimento', 'Hipertrofia', 'Reeducação alimentar', 'Saúde geral', 'Performance esportiva'],
     });
   }, [profile]);
 
@@ -55,7 +60,9 @@ export default function Personalizacao() {
     setErro(null); setFeedback(null);
     if (!form.marca_nome.trim()) return setErro('Informe o nome da marca.');
     setBusy(true);
-    const { error } = await supabase.from('nutris').update({
+    const objetivosLimpos = (form.objetivos ?? [])
+      .map(o => String(o ?? '').trim()).filter(Boolean);
+    const payloadCompleto = {
       marca_nome: form.marca_nome.trim(),
       marca_subtitulo: form.marca_subtitulo.trim() || null,
       logo_url: form.logo_url,
@@ -65,10 +72,19 @@ export default function Personalizacao() {
       cor_primaria: form.cor_primaria,
       cor_secundaria: form.cor_secundaria,
       tipografia: form.tipografia,
-    }).eq('id', user.id);
+      objetivos: objetivosLimpos.length > 0 ? objetivosLimpos : null,
+    };
+    const { error, omitidos } = await omitColunasFaltantes(
+      payloadCompleto, ['objetivos'],
+      (p) => supabase.from('nutris').update(p).eq('id', user.id),
+    );
     setBusy(false);
     if (error) return setErro('Erro: ' + error.message);
-    setFeedback('Personalização salva! Recarregue a página pra ver tudo aplicado.');
+    if (omitidos.length > 0) {
+      setFeedback('Personalização salva! ATENÇÃO: a lista de Objetivos não foi guardada porque seu Supabase está desatualizado — rode o SQL: github.com/danielasoares-rd/lapidare-app/blob/main/supabase/delta-v1.14.0.sql');
+    } else {
+      setFeedback('Personalização salva! Recarregue a página pra ver tudo aplicado.');
+    }
   }
 
   async function aplicarPaleta(p) {
@@ -489,6 +505,58 @@ export default function Personalizacao() {
           </button>
         </div>
       )}
+
+      {/* Opções de cadastro de paciente — lista customizável de Objetivos */}
+      <div className="card" style={{ marginTop: 18, padding: 18 }}>
+        <div className="card-title" style={{ marginBottom: 4 }}>Opções de cadastro de paciente</div>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
+          Edite a lista de "Objetivo" que aparece quando você cadastra uma paciente.
+          Personalize pro seu nicho — ex: <em>Menopausa, SOP, Endometriose, Fertilidade</em>.
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {(form.objetivos ?? []).map((obj, i) => (
+            <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                type="text"
+                value={obj}
+                onChange={e => setForm(f => ({
+                  ...f,
+                  objetivos: f.objetivos.map((o, idx) => idx === i ? e.target.value : o),
+                }))}
+                placeholder="Ex: Emagrecimento"
+                style={{ flex: 1, padding: '6px 10px', fontSize: 13, fontFamily: 'var(--font-sans)' }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if ((form.objetivos ?? []).length === 1) return alert('Mantenha pelo menos 1 opção.');
+                  setForm(f => ({ ...f, objetivos: f.objetivos.filter((_, idx) => idx !== i) }));
+                }}
+                title="Remover"
+                style={{
+                  background: 'none', border: '0.5px solid var(--border)',
+                  borderRadius: 6, padding: '6px 10px', cursor: 'pointer',
+                  color: 'var(--red)', fontSize: 12,
+                }}>
+                <i className="ti ti-trash" aria-hidden="true"></i>
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setForm(f => ({ ...f, objetivos: [...(f.objetivos ?? []), ''] }))}
+          style={{
+            marginTop: 10,
+            background: 'none', border: '0.5px dashed var(--border)',
+            borderRadius: 6, padding: '6px 12px', fontSize: 12,
+            color: 'var(--text3)', cursor: 'pointer', fontFamily: 'var(--font-sans)',
+          }}>
+          <i className="ti ti-plus" aria-hidden="true"></i> Adicionar objetivo
+        </button>
+      </div>
 
       {/* Salvar */}
       <div style={{

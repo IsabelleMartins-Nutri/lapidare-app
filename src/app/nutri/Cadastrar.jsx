@@ -3,7 +3,9 @@ import { supabase } from '../../lib/supabase.js';
 import { useSession } from '../../lib/session.jsx';
 import { dataBR } from '../../lib/utils.js';
 
-const OBJETIVOS = ['Emagrecimento', 'Hipertrofia', 'Reeducação alimentar', 'Saúde geral', 'Performance esportiva'];
+// Lista padrão de objetivos — usada como fallback se a nutri não customizou ainda.
+// A lista CUSTOMIZADA fica em nutris.objetivos (editável em /nutri/personalizacao).
+const OBJETIVOS_DEFAULT = ['Emagrecimento', 'Hipertrofia', 'Reeducação alimentar', 'Saúde geral', 'Performance esportiva'];
 const PLANOS    = [
   { v: 'trimestral',     l: 'Trimestral' },
   { v: 'semestral',      l: 'Semestral' },
@@ -17,13 +19,19 @@ const SEXOS = [
 ];
 
 export default function Cadastrar() {
-  const { user } = useSession();
+  const { user, profile } = useSession();
+
+  // Objetivos customizados pela nutri (cai pro default se não tiver lista
+  // configurada ainda, ou se o Supabase dela não foi atualizado pra v1.14)
+  const objetivosCustom = Array.isArray(profile?.objetivos) && profile.objetivos.length > 0
+    ? profile.objetivos
+    : OBJETIVOS_DEFAULT;
 
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [nascimento, setNascimento] = useState('');
   const [sexo, setSexo] = useState('feminino');
-  const [objetivo, setObjetivo] = useState('Emagrecimento');
+  const [objetivo, setObjetivo] = useState(OBJETIVOS_DEFAULT[0]);
   const [tipoPlano, setTipoPlano] = useState('trimestral');
   const [modalidade, setModalidade] = useState('Online');
   const [obs, setObs] = useState('');
@@ -44,6 +52,15 @@ export default function Cadastrar() {
     setPendentes(data ?? []);
   }
   useEffect(() => { carregarPendentes(); }, [user]);
+
+  // Quando carregar profile (ou nutri trocar lista no Personalização),
+  // garante que o "Objetivo" selecionado existe na lista — senão usa o 1º.
+  useEffect(() => {
+    if (objetivosCustom.length > 0 && !objetivosCustom.includes(objetivo)) {
+      setObjetivo(objetivosCustom[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [objetivosCustom.join('|')]);
 
   function resetForm() {
     setNome(''); setEmail(''); setNascimento(''); setSexo('feminino');
@@ -162,7 +179,7 @@ export default function Cadastrar() {
             <SelectField label="Sexo" value={sexo} onChange={setSexo} options={SEXOS} />
           </div>
 
-          <SelectField label="Objetivo" value={objetivo} onChange={setObjetivo} options={OBJETIVOS} />
+          <SelectField label="Objetivo" value={objetivo} onChange={setObjetivo} options={objetivosCustom} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <SelectField label="Tipo de plano" value={tipoPlano} onChange={setTipoPlano} options={PLANOS} />
             <SelectField label="Modalidade" value={modalidade} onChange={setModalidade} options={MODALIDADES} />
