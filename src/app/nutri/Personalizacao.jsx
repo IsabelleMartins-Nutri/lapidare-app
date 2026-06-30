@@ -31,7 +31,9 @@ export default function Personalizacao() {
     cor_primaria: '#a08456',
     cor_secundaria: '#c9a96e',
     tipografia: 'classica',
-    objetivos: [],          // lista de objetivos custom (cadastro de paciente)
+    objetivos: [],          // lista custom de objetivos (cadastro de paciente)
+    tipos_plano: [],        // lista custom de tipos de plano
+    modalidades: [],        // lista custom de modalidades
   });
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState(null);
@@ -53,6 +55,12 @@ export default function Personalizacao() {
       objetivos: Array.isArray(profile.objetivos) && profile.objetivos.length > 0
         ? profile.objetivos
         : ['Emagrecimento', 'Hipertrofia', 'Reeducação alimentar', 'Saúde geral', 'Performance esportiva'],
+      tipos_plano: Array.isArray(profile.tipos_plano) && profile.tipos_plano.length > 0
+        ? profile.tipos_plano
+        : ['Trimestral', 'Semestral', 'Consultoria', 'Acompanhamento'],
+      modalidades: Array.isArray(profile.modalidades) && profile.modalidades.length > 0
+        ? profile.modalidades
+        : ['Presencial', 'Online', 'Híbrido'],
     });
   }, [profile]);
 
@@ -60,8 +68,10 @@ export default function Personalizacao() {
     setErro(null); setFeedback(null);
     if (!form.marca_nome.trim()) return setErro('Informe o nome da marca.');
     setBusy(true);
-    const objetivosLimpos = (form.objetivos ?? [])
-      .map(o => String(o ?? '').trim()).filter(Boolean);
+    const limpa = (arr) => (arr ?? []).map(o => String(o ?? '').trim()).filter(Boolean);
+    const objetivosLimpos   = limpa(form.objetivos);
+    const tiposPlanoLimpos  = limpa(form.tipos_plano);
+    const modalidadesLimpas = limpa(form.modalidades);
     const payloadCompleto = {
       marca_nome: form.marca_nome.trim(),
       marca_subtitulo: form.marca_subtitulo.trim() || null,
@@ -73,15 +83,17 @@ export default function Personalizacao() {
       cor_secundaria: form.cor_secundaria,
       tipografia: form.tipografia,
       objetivos: objetivosLimpos.length > 0 ? objetivosLimpos : null,
+      tipos_plano: tiposPlanoLimpos.length > 0 ? tiposPlanoLimpos : null,
+      modalidades: modalidadesLimpas.length > 0 ? modalidadesLimpas : null,
     };
     const { error, omitidos } = await omitColunasFaltantes(
-      payloadCompleto, ['objetivos'],
+      payloadCompleto, ['objetivos', 'tipos_plano', 'modalidades'],
       (p) => supabase.from('nutris').update(p).eq('id', user.id),
     );
     setBusy(false);
     if (error) return setErro('Erro: ' + error.message);
     if (omitidos.length > 0) {
-      setFeedback('Personalização salva! ATENÇÃO: a lista de Objetivos não foi guardada porque seu Supabase está desatualizado — rode o SQL: github.com/danielasoares-rd/lapidare-app/blob/main/supabase/delta-v1.14.0.sql');
+      setFeedback(`Personalização salva! ATENÇÃO: as listas de ${omitidos.join(', ')} não foram guardadas porque seu Supabase está desatualizado — rode o SQL: github.com/danielasoares-rd/lapidare-app/blob/main/supabase/delta-v1.14.1.sql`);
     } else {
       setFeedback('Personalização salva! Recarregue a página pra ver tudo aplicado.');
     }
@@ -506,56 +518,42 @@ export default function Personalizacao() {
         </div>
       )}
 
-      {/* Opções de cadastro de paciente — lista customizável de Objetivos */}
+      {/* Opções de cadastro de paciente — 3 listas customizáveis */}
       <div className="card" style={{ marginTop: 18, padding: 18 }}>
         <div className="card-title" style={{ marginBottom: 4 }}>Opções de cadastro de paciente</div>
-        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>
-          Edite a lista de "Objetivo" que aparece quando você cadastra uma paciente.
-          Personalize pro seu nicho — ex: <em>Menopausa, SOP, Endometriose, Fertilidade</em>.
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>
+          Personalize as listas que aparecem quando você cadastra uma paciente.
+          Adapte pro seu nicho — ex: <em>Menopausa, SOP, Endometriose</em> em Objetivos
+          ou <em>"Programa Equilíbrio 90 dias"</em> em Tipo de plano.
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {(form.objetivos ?? []).map((obj, i) => (
-            <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input
-                type="text"
-                value={obj}
-                onChange={e => setForm(f => ({
-                  ...f,
-                  objetivos: f.objetivos.map((o, idx) => idx === i ? e.target.value : o),
-                }))}
-                placeholder="Ex: Emagrecimento"
-                style={{ flex: 1, padding: '6px 10px', fontSize: 13, fontFamily: 'var(--font-sans)' }}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  if ((form.objetivos ?? []).length === 1) return alert('Mantenha pelo menos 1 opção.');
-                  setForm(f => ({ ...f, objetivos: f.objetivos.filter((_, idx) => idx !== i) }));
-                }}
-                title="Remover"
-                style={{
-                  background: 'none', border: '0.5px solid var(--border)',
-                  borderRadius: 6, padding: '6px 10px', cursor: 'pointer',
-                  color: 'var(--red)', fontSize: 12,
-                }}>
-                <i className="ti ti-trash" aria-hidden="true"></i>
-              </button>
-            </div>
-          ))}
-        </div>
+        <EditorListaPersonalizacao
+          label="Objetivos"
+          placeholder="Ex: Menopausa"
+          textoAdd="Adicionar objetivo"
+          itens={form.objetivos ?? []}
+          onChange={novos => setForm(f => ({ ...f, objetivos: novos }))}
+        />
 
-        <button
-          type="button"
-          onClick={() => setForm(f => ({ ...f, objetivos: [...(f.objetivos ?? []), ''] }))}
-          style={{
-            marginTop: 10,
-            background: 'none', border: '0.5px dashed var(--border)',
-            borderRadius: 6, padding: '6px 12px', fontSize: 12,
-            color: 'var(--text3)', cursor: 'pointer', fontFamily: 'var(--font-sans)',
-          }}>
-          <i className="ti ti-plus" aria-hidden="true"></i> Adicionar objetivo
-        </button>
+        <div style={{ height: 14 }} />
+
+        <EditorListaPersonalizacao
+          label="Tipos de plano"
+          placeholder="Ex: Trimestral"
+          textoAdd="Adicionar tipo de plano"
+          itens={form.tipos_plano ?? []}
+          onChange={novos => setForm(f => ({ ...f, tipos_plano: novos }))}
+        />
+
+        <div style={{ height: 14 }} />
+
+        <EditorListaPersonalizacao
+          label="Modalidades"
+          placeholder="Ex: Online"
+          textoAdd="Adicionar modalidade"
+          itens={form.modalidades ?? []}
+          onChange={novos => setForm(f => ({ ...f, modalidades: novos }))}
+        />
       </div>
 
       {/* Salvar */}
@@ -574,6 +572,59 @@ export default function Personalizacao() {
         </button>
       </div>
     </>
+  );
+}
+
+/**
+ * Editor inline de uma lista de strings (Objetivos / Tipos de plano / Modalidades).
+ * Edição em linha + botão de remover + "Adicionar". Mantém pelo menos 1 item.
+ */
+function EditorListaPersonalizacao({ label, placeholder, textoAdd, itens, onChange }) {
+  return (
+    <div>
+      <div style={{
+        fontSize: 11, letterSpacing: 1, textTransform: 'uppercase',
+        color: 'var(--text3)', marginBottom: 6, fontWeight: 600,
+      }}>{label}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {itens.map((it, i) => (
+          <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              type="text"
+              value={it}
+              onChange={e => onChange(itens.map((o, idx) => idx === i ? e.target.value : o))}
+              placeholder={placeholder}
+              style={{ flex: 1, padding: '6px 10px', fontSize: 13, fontFamily: 'var(--font-sans)' }}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (itens.length === 1) return alert('Mantenha pelo menos 1 opção.');
+                onChange(itens.filter((_, idx) => idx !== i));
+              }}
+              title="Remover"
+              style={{
+                background: 'none', border: '0.5px solid var(--border)',
+                borderRadius: 6, padding: '6px 10px', cursor: 'pointer',
+                color: 'var(--red)', fontSize: 12,
+              }}>
+              <i className="ti ti-trash" aria-hidden="true"></i>
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange([...itens, ''])}
+        style={{
+          marginTop: 8,
+          background: 'none', border: '0.5px dashed var(--border)',
+          borderRadius: 6, padding: '6px 12px', fontSize: 12,
+          color: 'var(--text3)', cursor: 'pointer', fontFamily: 'var(--font-sans)',
+        }}>
+        <i className="ti ti-plus" aria-hidden="true"></i> {textoAdd}
+      </button>
+    </div>
   );
 }
 

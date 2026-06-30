@@ -1,5 +1,5 @@
 {
-  "version": "1.14.0",
+  "version": "1.14.1",
   "released_at": "2026-06-30",
-  "notes": "Nutri pode customizar as opções de 'Objetivo' do cadastro da paciente — útil pra quem atende nicho específico (saúde da mulher, esportiva, etc). Editado em Personalização."
+  "notes": "Tipo de plano e Modalidade agora também são customizáveis pela nutri (mesma seção 'Opções de cadastro' da Personalização). Útil pra quem só atende online ou tem nomes próprios pros planos."
 }

@@ -3,16 +3,12 @@ import { supabase } from '../../lib/supabase.js';
 import { useSession } from '../../lib/session.jsx';
 import { dataBR } from '../../lib/utils.js';
 
-// Lista padrão de objetivos — usada como fallback se a nutri não customizou ainda.
-// A lista CUSTOMIZADA fica em nutris.objetivos (editável em /nutri/personalizacao).
-const OBJETIVOS_DEFAULT = ['Emagrecimento', 'Hipertrofia', 'Reeducação alimentar', 'Saúde geral', 'Performance esportiva'];
-const PLANOS    = [
-  { v: 'trimestral',     l: 'Trimestral' },
-  { v: 'semestral',      l: 'Semestral' },
-  { v: 'consultoria',    l: 'Consultoria' },
-  { v: 'acompanhamento', l: 'Acompanhamento' },
-];
-const MODALIDADES = ['Presencial', 'Online', 'Híbrido'];
+// Listas padrão usadas como fallback se a nutri não customizou ainda.
+// As listas CUSTOMIZADAS ficam em nutris.{objetivos,tipos_plano,modalidades}
+// (editáveis em /nutri/personalizacao).
+const OBJETIVOS_DEFAULT   = ['Emagrecimento', 'Hipertrofia', 'Reeducação alimentar', 'Saúde geral', 'Performance esportiva'];
+const TIPOS_PLANO_DEFAULT = ['Trimestral', 'Semestral', 'Consultoria', 'Acompanhamento'];
+const MODALIDADES_DEFAULT = ['Presencial', 'Online', 'Híbrido'];
 const SEXOS = [
   { v: 'feminino',  l: 'Feminino' },
   { v: 'masculino', l: 'Masculino' },
@@ -21,19 +17,25 @@ const SEXOS = [
 export default function Cadastrar() {
   const { user, profile } = useSession();
 
-  // Objetivos customizados pela nutri (cai pro default se não tiver lista
-  // configurada ainda, ou se o Supabase dela não foi atualizado pra v1.14)
+  // Listas customizadas pela nutri (caem pro default se não tiver lista
+  // configurada ainda, ou se o Supabase dela não foi atualizado).
   const objetivosCustom = Array.isArray(profile?.objetivos) && profile.objetivos.length > 0
     ? profile.objetivos
     : OBJETIVOS_DEFAULT;
+  const tiposPlanoCustom = Array.isArray(profile?.tipos_plano) && profile.tipos_plano.length > 0
+    ? profile.tipos_plano
+    : TIPOS_PLANO_DEFAULT;
+  const modalidadesCustom = Array.isArray(profile?.modalidades) && profile.modalidades.length > 0
+    ? profile.modalidades
+    : MODALIDADES_DEFAULT;
 
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [nascimento, setNascimento] = useState('');
   const [sexo, setSexo] = useState('feminino');
   const [objetivo, setObjetivo] = useState(OBJETIVOS_DEFAULT[0]);
-  const [tipoPlano, setTipoPlano] = useState('trimestral');
-  const [modalidade, setModalidade] = useState('Online');
+  const [tipoPlano, setTipoPlano] = useState(TIPOS_PLANO_DEFAULT[0]);
+  const [modalidade, setModalidade] = useState(MODALIDADES_DEFAULT[1]); // Online por default
   const [obs, setObs] = useState('');
 
   const [busy, setBusy] = useState(false);
@@ -56,16 +58,26 @@ export default function Cadastrar() {
   // Quando carregar profile (ou nutri trocar lista no Personalização),
   // garante que o "Objetivo" selecionado existe na lista — senão usa o 1º.
   useEffect(() => {
+    // Quando carregar profile (ou nutri trocar lista no Personalização),
+    // garante que o valor selecionado existe na lista — senão usa o 1º.
     if (objetivosCustom.length > 0 && !objetivosCustom.includes(objetivo)) {
       setObjetivo(objetivosCustom[0]);
     }
+    if (tiposPlanoCustom.length > 0 && !tiposPlanoCustom.includes(tipoPlano)) {
+      setTipoPlano(tiposPlanoCustom[0]);
+    }
+    if (modalidadesCustom.length > 0 && !modalidadesCustom.includes(modalidade)) {
+      setModalidade(modalidadesCustom[0]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [objetivosCustom.join('|')]);
+  }, [objetivosCustom.join('|'), tiposPlanoCustom.join('|'), modalidadesCustom.join('|')]);
 
   function resetForm() {
     setNome(''); setEmail(''); setNascimento(''); setSexo('feminino');
-    setObjetivo('Emagrecimento'); setTipoPlano('trimestral');
-    setModalidade('Online'); setObs('');
+    setObjetivo(objetivosCustom[0] ?? OBJETIVOS_DEFAULT[0]);
+    setTipoPlano(tiposPlanoCustom[0] ?? TIPOS_PLANO_DEFAULT[0]);
+    setModalidade(modalidadesCustom[1] ?? modalidadesCustom[0] ?? MODALIDADES_DEFAULT[1]);
+    setObs('');
   }
 
   async function salvar(e) {
@@ -181,8 +193,8 @@ export default function Cadastrar() {
 
           <SelectField label="Objetivo" value={objetivo} onChange={setObjetivo} options={objetivosCustom} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <SelectField label="Tipo de plano" value={tipoPlano} onChange={setTipoPlano} options={PLANOS} />
-            <SelectField label="Modalidade" value={modalidade} onChange={setModalidade} options={MODALIDADES} />
+            <SelectField label="Tipo de plano" value={tipoPlano} onChange={setTipoPlano} options={tiposPlanoCustom} />
+            <SelectField label="Modalidade" value={modalidade} onChange={setModalidade} options={modalidadesCustom} />
           </div>
 
           <label style={{ display: 'block', marginBottom: 12 }}>
