@@ -732,6 +732,9 @@ function TemplateEditor({ template, nutriId, pacientes, onClose, onSaved }) {
 
   const [nome, setNome] = useState(isEdit ? template.nome : (isImportar ? '' : TEMPLATE_PADRAO.nome));
   const [paciente, setPaciente] = useState(isEdit ? (template.paciente_id ?? '') : '');
+  // Tipo do template: recorrente (envio manual) ou pre_consulta (auto-envio no cadastro).
+  // Antes ficava hardcoded 'recorrente' — não tinha jeito de criar pré-consulta.
+  const [tipo, setTipo] = useState(isEdit ? (template.tipo ?? 'recorrente') : 'recorrente');
   const [jsonText, setJsonText] = useState(isImportar
     ? ''
     : JSON.stringify({
@@ -766,7 +769,7 @@ function TemplateEditor({ template, nutriId, pacientes, onClose, onSaved }) {
       paciente_id: paciente || null,
       nome: nome.trim() || obj.nome,
       perguntas: obj.perguntas,
-      tipo: 'recorrente',
+      tipo,
       updated_at: new Date().toISOString(),
     };
     const { error } = isEdit
@@ -784,7 +787,18 @@ function TemplateEditor({ template, nutriId, pacientes, onClose, onSaved }) {
       onClose={onClose} large>
       <label className="form-lbl" style={{ marginTop: 0 }}>Nome do template</label>
       <input value={nome} onChange={e => setNome(e.target.value)}
-        placeholder="Ex: Check-in pré-consulta" />
+        placeholder="Ex: Check-in semanal, Pré-consulta, Recordatório 24h..." />
+
+      <label className="form-lbl">Quando este questionário é enviado?</label>
+      <select value={tipo} onChange={e => setTipo(e.target.value)}>
+        <option value="recorrente">Manual — envio quando eu quiser (check-ins periódicos)</option>
+        <option value="pre_consulta">Automático — quando a paciente se cadastra (pré-consulta)</option>
+      </select>
+      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4, lineHeight: 1.4 }}>
+        {tipo === 'pre_consulta'
+          ? '🔔 Este questionário é enviado sozinho quando a paciente ativar a conta (link de cadastro).'
+          : 'Você escolhe pra qual paciente e quando enviar cada vez.'}
+      </div>
 
       <label className="form-lbl">Para quem é este template?</label>
       <select value={paciente} onChange={e => setPaciente(e.target.value)}>
