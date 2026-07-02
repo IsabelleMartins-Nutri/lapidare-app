@@ -274,6 +274,24 @@ function FotosEvolucao() {
   function escolher(e) {
     const f = e.target.files?.[0];
     if (!f) return;
+    // Valida tamanho e tipo antes de aceitar. HEIC do iPhone não é suportado
+    // por canvas.drawImage em Chrome — falha silenciosa. Vídeo às vezes passa
+    // com "image/*" no Android.
+    if (f.size > 10 * 1024 * 1024) {
+      setErro('Arquivo muito grande (máx 10 MB). Diminua a resolução.');
+      if (e.target) e.target.value = '';
+      return;
+    }
+    if (f.type && !f.type.startsWith('image/')) {
+      setErro('Só imagens são aceitas (JPG, PNG, WebP).');
+      if (e.target) e.target.value = '';
+      return;
+    }
+    if (/heic|heif/i.test(f.type || f.name || '')) {
+      setErro('Fotos HEIC do iPhone não são suportadas. Nas Configurações do iPhone → Câmera → Formatos → "Mais compatível" (JPG).');
+      if (e.target) e.target.value = '';
+      return;
+    }
     setArquivo(f);
     setPreview(URL.createObjectURL(f));
     setRot(0);

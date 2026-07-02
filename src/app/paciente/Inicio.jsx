@@ -496,7 +496,12 @@ export default function Inicio() {
                 {plano.macros?.kcal}<span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 2 }}>kcal</span>
               </div>
               <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>
-                P {plano.macros?.prot_g}g · C {plano.macros?.cho_g}g · G {plano.macros?.lip_g}g
+                {/* Aceita 2 formatos de nome — planos antigos publicados com prompt
+                    antigo usam proteinas_g/carbo_g/gorduras_g; código canônico usa
+                    prot_g/cho_g/lip_g. Mesma correção aplicada em Plano.jsx (v1.14.5). */}
+                P {plano.macros?.prot_g ?? plano.macros?.proteinas_g ?? '—'}g ·
+                C {plano.macros?.cho_g ?? plano.macros?.carbo_g ?? '—'}g ·
+                G {plano.macros?.lip_g ?? plano.macros?.gorduras_g ?? '—'}g
               </div>
             </>
           ) : <div style={{ fontSize: 12, color: 'var(--muted)' }}>Aguardando plano</div>}

@@ -58,6 +58,10 @@ export default function RedefinirSenha() {
         return setErro(error.message);
       }
       setSucesso(true);
+      // Desloga imediatamente pra evitar sessão persistente em dispositivo
+      // não confiável (ex: reset feito num navegador anônimo). Sem isso, o
+      // useEffect do Login redireciona direto pro painel.
+      await supabase.auth.signOut();
       setTimeout(() => navigate('/login', { replace: true }), 2500);
     } catch (err) {
       setBusy(false);

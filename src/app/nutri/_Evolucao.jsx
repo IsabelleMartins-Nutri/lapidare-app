@@ -36,6 +36,55 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
   const [comparar, setComparar] = useState({ a: null, b: null });
   const [verCheckin, setVerCheckin] = useState(null);
 
+  // Cleanup: quando pacienteId muda antes do fetch antigo terminar, o `active`
+  // flag garante que resultados obsoletos não sobrescrevam o estado da paciente
+  // nova (antes: dados da paciente A apareciam no perfil da B).
+  useEffect(() => {
+    let active = true;
+    async function carregar() {
+      const [avRes, ftRes, ckRes, plRes, prRes, csRes] = await Promise.all([
+        supabase.from('peso_registros').select('*').eq('paciente_id', pacienteId).order('data'),
+        supabase.from('fotos_evolucao').select('*').eq('paciente_id', pacienteId).order('data_foto'),
+        supabase.from('checkin_envios').select('id, perguntas, respostas, respondido_em, enviado_em').eq('paciente_id', pacienteId).not('respondido_em', 'is', null).order('respondido_em'),
+        supabase.from('planos').select('id, dados, publicado_em').eq('paciente_id', pacienteId).order('publicado_em'),
+        supabase.from('prescricoes').select('id, tipo, titulo, created_at').eq('paciente_id', pacienteId).order('created_at'),
+        supabase.from('consultas').select('id, tipo, data_hora, status').eq('paciente_id', pacienteId).order('data_hora'),
+      ]);
+      if (!active) return;
+      setAvaliacoes(avRes.data ?? []);
+      setFotos(ftRes.data ?? []);
+      setCheckins(ckRes.data ?? []);
+      setPlanos(plRes.data ?? []);
+      setPrescricoes(prRes.data ?? []);
+      setConsultas(csRes.data ?? []);
+
+      // pré-fetch signed URLs
+      const novasUrls = {};
+      for (const f of ftRes.data ?? []) {
+        if (!active) return;
+        const u = await signedUrl(f.storage_path);
+        if (u) novasUrls[f.id] = u;
+      }
+      if (!active) return;
+      setUrls(novasUrls);
+
+      // por padrão, comparativo = primeira foto vs última (frente)
+      const frentes = (ftRes.data ?? []).filter(f => f.tipo === 'frente');
+      const todas = ftRes.data ?? [];
+      const ordem = frentes.length >= 2 ? frentes : todas;
+      if (ordem.length >= 2) {
+        setComparar({ a: ordem[0].id, b: ordem[ordem.length - 1].id });
+      } else if (ordem.length === 1) {
+        setComparar({ a: ordem[0].id, b: null });
+      }
+
+      setCarregando(false);
+    }
+    carregar();
+    return () => { active = false; };
+  }, [pacienteId]);
+
+  // Wrapper pra manter compat com handlers que chamam carregar() explicitamente.
   async function carregar() {
     const [avRes, ftRes, ckRes, plRes, prRes, csRes] = await Promise.all([
       supabase.from('peso_registros').select('*').eq('paciente_id', pacienteId).order('data'),
@@ -51,28 +100,8 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
     setPlanos(plRes.data ?? []);
     setPrescricoes(prRes.data ?? []);
     setConsultas(csRes.data ?? []);
-
-    // pré-fetch signed URLs
-    const novasUrls = {};
-    for (const f of ftRes.data ?? []) {
-      const u = await signedUrl(f.storage_path);
-      if (u) novasUrls[f.id] = u;
-    }
-    setUrls(novasUrls);
-
-    // por padrão, comparativo = primeira foto vs última (frente)
-    const frentes = (ftRes.data ?? []).filter(f => f.tipo === 'frente');
-    const todas = ftRes.data ?? [];
-    const ordem = frentes.length >= 2 ? frentes : todas;
-    if (ordem.length >= 2) {
-      setComparar({ a: ordem[0].id, b: ordem[ordem.length - 1].id });
-    } else if (ordem.length === 1) {
-      setComparar({ a: ordem[0].id, b: null });
-    }
-
     setCarregando(false);
   }
-  useEffect(() => { carregar(); }, [pacienteId]);
 
   async function excluirFoto(foto) {
     if (!window.confirm(`Excluir foto de ${dataBR(foto.data_foto)}? Esta ação não pode ser desfeita.`)) return;

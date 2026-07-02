@@ -24,8 +24,17 @@ const MAIS_ITEMS = [
   { path: '/paciente/chat',        icon: 'message-circle', label: 'Chat com a Dra.',     sub: 'Conversa direta' },
 ];
 
+/** Retorna "Bom dia", "Boa tarde" ou "Boa noite" baseado na hora local do dispositivo. */
+function saudacaoHorario() {
+  const h = new Date().getHours();
+  if (h < 5) return 'Boa noite';
+  if (h < 12) return 'Bom dia';
+  if (h < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
 const HEADERS = {
-  '/paciente/inicio':       (nome) =>           ({ eyebrow: 'Meu plano',         title: `Bom dia, ${nome}` }),
+  '/paciente/inicio':       (nome) =>           ({ eyebrow: 'Meu plano',         title: `${saudacaoHorario()}, ${nome}` }),
   '/paciente/plano':        () =>                ({ eyebrow: 'Plano alimentar',  title: 'Meu plano',         subtitle: '' }),
   '/paciente/feed':         () =>                ({ eyebrow: 'Diário alimentar', title: 'Pratos',            subtitle: 'Registre o que você comeu' }),
   '/paciente/progresso':    () =>                ({ eyebrow: 'Minha evolução',   title: 'Progresso' }),

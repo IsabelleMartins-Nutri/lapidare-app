@@ -86,14 +86,32 @@ export default function Personalizacao() {
       tipos_plano: tiposPlanoLimpos.length > 0 ? tiposPlanoLimpos : null,
       modalidades: modalidadesLimpas.length > 0 ? modalidadesLimpas : null,
     };
+    // Lista mais ampla de campos "opcionais" — pra Supabase desatualizado
+    // não travar a tela inteira. Antes só cobria 3 listas customizáveis.
     const { error, omitidos } = await omitColunasFaltantes(
-      payloadCompleto, ['objetivos', 'tipos_plano', 'modalidades'],
+      payloadCompleto,
+      ['objetivos', 'tipos_plano', 'modalidades', 'cor_texto_sidebar', 'foto_url', 'nome'],
       (p) => supabase.from('nutris').update(p).eq('id', user.id),
     );
     setBusy(false);
     if (error) return setErro('Erro: ' + error.message);
+
+    // Agora que salvou com sucesso, remove arquivos antigos do storage
+    // (só se o URL mudou — comparação com profile.xxx original).
+    async function apagarArquivoAntigoSeMudou(campo) {
+      const antigo = profile?.[campo];
+      const novo = form[campo];
+      if (!antigo || antigo === novo) return;
+      try {
+        const u = new URL(antigo);
+        const oldPath = u.pathname.split('/logos/')[1];
+        if (oldPath) await supabase.storage.from('logos').remove([oldPath]);
+      } catch { /* ignore */ }
+    }
+    await Promise.all([apagarArquivoAntigoSeMudou('logo_url'), apagarArquivoAntigoSeMudou('foto_url')]);
+
     if (omitidos.length > 0) {
-      setFeedback(`Personalização salva! ATENÇÃO: as listas de ${omitidos.join(', ')} não foram guardadas porque seu Supabase está desatualizado — rode o SQL: github.com/danielasoares-rd/lapidare-app/blob/main/supabase/delta-v1.14.1.sql`);
+      setFeedback(`Personalização salva! ATENÇÃO: ${omitidos.join(', ')} não foram guardados porque seu Supabase está desatualizado — rode o SQL: github.com/danielasoares-rd/lapidare-app/blob/main/supabase/delta-v1.14.1.sql`);
     } else {
       setFeedback('Personalização salva! Recarregue a página pra ver tudo aplicado.');
     }
@@ -110,14 +128,10 @@ export default function Personalizacao() {
     if (file.size > 2 * 1024 * 1024) return alert('Imagem muito grande (máx 2 MB).');
     setUploading(true);
 
-    // Remove logo antiga se existir
-    if (form.logo_url) {
-      try {
-        const u = new URL(form.logo_url);
-        const oldPath = u.pathname.split('/logos/')[1];
-        if (oldPath) await supabase.storage.from('logos').remove([oldPath]);
-      } catch { /* ignore */ }
-    }
+    // NÃO deleta o arquivo antigo aqui — só quando ela clicar em Salvar,
+    // se o `profile.logo_url` original for diferente do form.logo_url atual.
+    // Antes: se ela subisse foto nova e fechasse sem salvar, apagávamos o
+    // arquivo antigo e o profile.logo_url ficava apontando pra 404.
 
     const ext = (file.name.split('.').pop() || 'png').toLowerCase();
     const path = `${user.id}/${Date.now()}.${ext}`;
@@ -143,13 +157,7 @@ export default function Personalizacao() {
     if (file.size > 2 * 1024 * 1024) return alert('Imagem muito grande (máx 2 MB).');
     setUploading(true);
 
-    if (form.foto_url) {
-      try {
-        const u = new URL(form.foto_url);
-        const oldPath = u.pathname.split('/logos/')[1];
-        if (oldPath) await supabase.storage.from('logos').remove([oldPath]);
-      } catch { /* ignore */ }
-    }
+    // NÃO deleta o arquivo antigo aqui — só após Salvar (ver salvar()).
 
     const ext = (file.name.split('.').pop() || 'png').toLowerCase();
     const path = `${user.id}/foto_${Date.now()}.${ext}`;

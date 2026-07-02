@@ -65,11 +65,23 @@ export default function Suplementacao({ pacienteId, nutriId, pacienteNome }) {
     const { error: upErr } = await supabase.storage.from('prescricoes')
       .upload(path, pdfFile, { contentType: pdfFile.type });
     if (upErr) { setBusy(false); alert('Erro: ' + upErr.message); return; }
-    await supabase.from('prescricoes').insert({
+    const { error: insErr } = await supabase.from('prescricoes').insert({
       paciente_id: pacienteId, nutri_id: nutriId,
       tipo: 'suplementacao', titulo,
       storage_path: path,
     });
+    if (insErr) {
+      // Se DB rejeitar (ex: constraint check antigo sem 'suplementacao'),
+      // limpa arquivo órfão do storage e avisa a nutri pra rodar o SQL.
+      await supabase.storage.from('prescricoes').remove([path]);
+      setBusy(false);
+      if (/check|constraint|violates/i.test(insErr.message)) {
+        alert('Seu Supabase está desatualizado — a categoria "suplementacao" ainda não é aceita.\n\nRode o SQL atualizado: github.com/danielasoares-rd/lapidare-app/blob/main/supabase/setup.sql');
+      } else {
+        alert('Erro ao registrar: ' + insErr.message);
+      }
+      return;
+    }
     setBusy(false);
     setPdfFile(null);
     const inp = document.getElementById('sup-pdf-file');

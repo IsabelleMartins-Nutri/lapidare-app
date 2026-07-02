@@ -1,5 +1,5 @@
 {
-  "version": "1.14.5",
+  "version": "1.15.0",
   "released_at": "2026-06-30",
-  "notes": "Fix: macros do plano apareciam sem valores (só 'g') e refeições não abriam. Causa: prompt da Skill 6 gerava campos com nomes diferentes do que o código lia. Corrigido nos 2 lados: código aceita ambos formatos + prompt atualizado."
+  "notes": "Release grande com correções de auditoria: 20+ fixes agrupados. Bom dia dinâmico, 'Planos terminando' agora funciona, link do pendente com token, timezone Cérebro, race condition Evolução, marcados de Compras persistem, reset senha desloga, chat 100dvh, macros no Início com fallback, e mais. Ver commit pra lista completa."
 }

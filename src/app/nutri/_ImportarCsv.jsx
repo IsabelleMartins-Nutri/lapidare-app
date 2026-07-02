@@ -89,7 +89,9 @@ export default function ImportarCsv({ onClose, onImported }) {
   }
 
   const linhasValidas = useMemo(() => {
-    if (!mapa.nome === undefined || mapa.email === undefined) return [];
+    // Precedência: `!mapa.nome === undefined` avaliava `(!mapa.nome) === undefined`
+    // que sempre é false. Guard nunca disparava. Corrigido pra checar ausência.
+    if (mapa.nome === undefined || mapa.email === undefined) return [];
     const out = [];
     const errs = [];
     csv.rows.forEach((row, i) => {

@@ -63,19 +63,28 @@ export default function ChatNutri() {
 
   useEffect(() => { carregar(); }, [user]);
 
-  // Subscribe global: qualquer INSERT em mensagens das pacientes da nutri
+  // Subscribe global: qualquer INSERT em mensagens das pacientes da nutri.
+  // THROTTLE: em rajadas (várias pacientes mandando msg ao mesmo tempo),
+  // `carregar()` roda 1+2N queries por chamada — com 40 pacientes e 5 msgs
+  // rápidas seria 405 queries. Agrupamos chamadas em janelas de 800ms.
   useEffect(() => {
     if (!user) return;
+    let timerId = null;
+    const scheduleReload = () => {
+      if (timerId) return;
+      timerId = setTimeout(() => { timerId = null; carregar(); }, 800);
+    };
     const channel = supabase
       .channel(`chat-nutri-${user.id}`)
       .on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'mensagens',
         filter: `nutri_id=eq.${user.id}`,
-      }, () => {
-        carregar();
-      })
+      }, scheduleReload)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (timerId) clearTimeout(timerId);
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   if (pacientes === undefined) {

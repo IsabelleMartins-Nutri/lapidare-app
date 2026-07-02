@@ -81,12 +81,19 @@ export default function Cerebro() {
   const totalRecebido = parcelas.filter(p => p.status === 'pago')
     .reduce((a, p) => a + Number(p.valor), 0);
 
-  // Previsto nos próximos 6 meses (parcelas pendentes/atrasadas vencendo após hoje)
+  // A receber: previsto de meses futuros/atual + parcelas em atraso de meses passados
+  // (o "atrasado" deve entrar no "a receber", senão dinheiro pendente some da tela).
+  const totalAtrasado = useMemo(() => {
+    return parcelas
+      .filter(p => p.status === 'atrasado')
+      .reduce((a, p) => a + Number(p.valor), 0);
+  }, [parcelas]);
   const previstoProximosMeses = useMemo(() => {
-    return linhaTempo
+    const futuro = linhaTempo
       .filter(m => m.ehFuturo || m.ehAtual)
       .reduce((a, m) => a + m.previsto, 0);
-  }, [linhaTempo]);
+    return futuro + totalAtrasado;
+  }, [linhaTempo, totalAtrasado]);
 
   const previstoEsseMes = linhaTempo.find(m => m.ehAtual)?.previsto ?? 0;
 
@@ -95,12 +102,16 @@ export default function Cerebro() {
     ? vendas.reduce((a, v) => a + Number(v.valor_total), 0) / vendas.length
     : 0;
 
-  // Receita por serviço (mês corrente)
-  const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0);
+  // Receita por serviço (mês corrente).
+  // Fix timezone: `new Date('YYYY-MM-DD')` parseia como UTC midnight, que em
+  // BRT (UTC-3) vira 21h do dia anterior. Comparação com inicioMes local pulava
+  // vendas do dia 1º. Comparamos strings 'YYYY-MM-DD' pra ficar timezone-safe.
+  const hojeLocal = new Date();
+  const inicioMesStr = `${hojeLocal.getFullYear()}-${String(hojeLocal.getMonth() + 1).padStart(2, '0')}-01`;
   const receitaPorServico = useMemo(() => {
     const mapa = new Map();
     for (const v of vendas) {
-      if (new Date(v.data_venda) < inicioMes) continue;
+      if (String(v.data_venda ?? '').slice(0, 10) < inicioMesStr) continue;
       const key = v.servico_id ?? `manual:${v.servico}`;
       const nome = v.servico_id
         ? (servicos.find(s => s.id === v.servico_id)?.nome ?? v.servico)

@@ -342,14 +342,18 @@ function CheckinPersonalizado({ pacienteId, nutriId, pacienteNome }) {
     const tpl = templates.find(t => t.id === templateSel);
     if (!tpl) return setAviso({ tipo: 'erro', msg: 'Selecione um template.' });
     setBusy(true);
+    // Inclui nome + tipo (herdado do template) — antes vinha só perguntas,
+    // resultando em título genérico na tela da paciente e categorização errada.
     const { error } = await supabase.from('checkin_envios').insert({
       nutri_id: nutriId,
       paciente_id: pacienteId,
+      nome: tpl.nome ?? 'Questionário',
+      tipo: tpl.tipo === 'pre_consulta' ? 'pre_consulta' : 'recorrente',
       perguntas: tpl.perguntas,
     });
     setBusy(false);
     if (error) return setAviso({ tipo: 'erro', msg: error.message });
-    setAviso({ tipo: 'ok', msg: `Check-in "${tpl.nome}" enviado para ${pacienteNome.split(' ')[0]}.` });
+    setAviso({ tipo: 'ok', msg: `Questionário "${tpl.nome}" enviado para ${pacienteNome.split(' ')[0]}.` });
     carregar();
   }
 

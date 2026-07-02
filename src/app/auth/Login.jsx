@@ -114,6 +114,12 @@ export default function Login() {
     }
   }
 
+  // Se tem sessão mas o profile/role ficou null (trigger handle_new_user não
+  // rodou, SQL desatualizado, etc.), o usuário fica preso: o useEffect acima
+  // não redireciona (nem 'nutri' nem 'paciente') e ele não tem como sair.
+  // Mostramos uma tela com botão "Sair da conta atual" pra desbloquear.
+  const sessionTravada = session && !sessionLoading && !role;
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -128,6 +134,26 @@ export default function Login() {
         boxShadow: 'var(--shadow-md)',
         padding: 32
       }}>
+        {sessionTravada && (
+          <div style={{
+            padding: 14, background: '#fff7e0', border: '1px solid #f0c75e',
+            borderRadius: 10, marginBottom: 20, fontSize: 13, color: '#5a4400',
+          }}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Conta sem perfil ativo</div>
+            <div style={{ marginBottom: 10, lineHeight: 1.5 }}>
+              Sua sessão existe mas a conta não tem cadastro completo no sistema
+              (provável que o SQL do Supabase esteja desatualizado). Saia e cadastre-se de novo.
+            </div>
+            <button
+              onClick={async () => { await supabase.auth.signOut(); window.location.reload(); }}
+              style={{
+                background: '#5a4400', color: '#fff7e0', border: 'none',
+                borderRadius: 6, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              }}>
+              Sair da conta atual
+            </button>
+          </div>
+        )}
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           {tema.logo_url ? (
             <img

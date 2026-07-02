@@ -43,7 +43,9 @@ export default function Checkins() {
         .or('tipo.eq.recorrente,tipo.is.null')
         .order('created_at'),
       supabase.from('checkin_agendamentos')
-        .select('*, template:checkin_templates(nome, perguntas), paciente:pacientes(id, nome)')
+        // `tipo` é necessário — sem ele, `ag.template?.tipo` fica undefined
+        // e o agendamento de pré-consulta dispara como "recorrente".
+        .select('*, template:checkin_templates(nome, perguntas, tipo), paciente:pacientes(id, nome)')
         .eq('nutri_id', user.id)
         .order('proximo_envio'),
     ]);

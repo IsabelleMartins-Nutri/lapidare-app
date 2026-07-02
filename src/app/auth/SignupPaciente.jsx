@@ -62,16 +62,15 @@ export default function SignupPaciente() {
         }
       }
 
-      // Sem token: fluxo genérico (busca só o nome da nutri)
-      const { data } = await supabase
-        .from('nutris')
-        .select('nome')
-        .eq('id', nutriId)
-        .maybeSingle();
+      // Sem token: fluxo genérico. Usa RPC pública (security definer) porque
+      // a paciente ainda não tá logada — a policy de select em `nutris` só
+      // permite `id = auth.uid()`, então essa leitura via .from() nunca
+      // funcionaria pra usuário anônimo.
+      const { data } = await supabase.rpc('buscar_nome_nutri', { p_nutri_id: nutriId });
       if (!active) return;
-      if (data) {
+      if (data && data.length > 0) {
         setNutriValida(true);
-        setNutriNome(data.nome ?? '');
+        setNutriNome(data[0].nome ?? '');
       } else {
         setNutriValida(false);
       }

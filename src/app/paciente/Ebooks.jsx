@@ -14,25 +14,37 @@ const TAG_LABEL = {
 export default function Ebooks() {
   const { user } = useSession();
   const [ebooks, setEbooks] = useState(null);
+  const [erroCarga, setErroCarga] = useState(null);
 
   useEffect(() => {
     if (!user) return;
     (async () => {
-      // Pega só os ebooks atribuídos a essa paciente (via RLS)
-      const { data: links } = await supabase
+      // Diferencia "vazio" de "erro de rede" — antes ambos exibiam "Nenhum
+      // e-book ainda", o que enganava a paciente quando o Supabase falhava.
+      const { data: links, error: errLinks } = await supabase
         .from('ebooks_pacientes')
         .select('ebook_id')
         .eq('paciente_id', user.id);
+      if (errLinks) {
+        setErroCarga('Não consegui carregar seus e-books. Verifique sua conexão.');
+        setEbooks([]);
+        return;
+      }
       const ids = (links ?? []).map(l => l.ebook_id);
       if (ids.length === 0) {
         setEbooks([]);
         return;
       }
-      const { data } = await supabase
+      const { data, error: errEb } = await supabase
         .from('ebooks')
         .select('*')
         .in('id', ids)
         .order('created_at', { ascending: false });
+      if (errEb) {
+        setErroCarga('Não consegui carregar seus e-books. Verifique sua conexão.');
+        setEbooks([]);
+        return;
+      }
       setEbooks(data ?? []);
     })();
   }, [user]);
@@ -49,6 +61,12 @@ export default function Ebooks() {
       {ebooks === null ? (
         <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)' }}>
           Carregando...
+        </div>
+      ) : erroCarga ? (
+        <div style={{ padding: '40px 16px', textAlign: 'center' }}>
+          <i className="ti ti-cloud-off" style={{ fontSize: 40, color: 'var(--red)' }} aria-hidden="true"></i>
+          <div style={{ fontSize: 14, fontWeight: 500, margin: '8px 0 4px' }}>Não consegui carregar</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{erroCarga}</div>
         </div>
       ) : ebooks.length === 0 ? (
         <div style={{ padding: '40px 16px', textAlign: 'center' }}>

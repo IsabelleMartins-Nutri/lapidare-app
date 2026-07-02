@@ -75,6 +75,14 @@ export default function FeedPaciente() {
   async function enviar() {
     setErro(null);
     if (!arquivo) return setErro('Selecione uma foto.');
+    // Valida tamanho antes de tentar upload — Android com "image/*" às vezes
+    // deixa passar vídeo, e HEIC do iPhone não é suportado direto pelo browser.
+    if (arquivo.size > 8 * 1024 * 1024) {
+      return setErro('Arquivo muito grande (máx 8 MB). Diminua a resolução da foto ou tente outra.');
+    }
+    if (arquivo.type && !arquivo.type.startsWith('image/')) {
+      return setErro('Só imagens são aceitas. Vídeos e outros arquivos não.');
+    }
     setBusy(true);
 
     const ext = arquivo.name.split('.').pop() || 'jpg';

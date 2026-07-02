@@ -76,7 +76,13 @@ export default function ChatPaciente() {
   }, [msgs]);
 
   async function enviar() {
-    if (!text.trim() || !user || !profile?.nutri_id) return;
+    if (!text.trim() || !user) return;
+    // Se a paciente ficou "orfã" (nutri_id ausente no profile), avisamos em vez
+    // de sumir silenciosamente com a mensagem. Antes: perdia mensagem sem erro.
+    if (!profile?.nutri_id) {
+      alert('Não consegui identificar a nutricionista da sua conta. Recarrega a página ou fala com quem te cadastrou.');
+      return;
+    }
     const conteudo = text.trim();
     setText('');
     setBusy(true);
@@ -88,14 +94,16 @@ export default function ChatPaciente() {
     });
     setBusy(false);
     if (error) {
-      alert('Erro ao enviar: ' + error.message);
+      // Restaura o texto pra ela poder tentar de novo sem re-digitar
       setText(conteudo);
+      alert('Não consegui enviar: ' + error.message);
+      return;
     }
     // a UI atualiza via realtime — não precisa recarregar
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 76px)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100dvh - 76px)' }}>
       {/* Banner da Dra. */}
       <div className="card cream" style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '0 16px 10px', padding: '10px 14px' }}>
         {tema.nutri_foto_url ? (

@@ -33,7 +33,11 @@ export default function Pacientes() {
   useEffect(() => { if (user) carregar(); }, [user]);
 
   async function copiarLinkSignup(p) {
-    const link = `${window.location.origin}/signup-paciente/${user.id}`;
+    // Inclui o token do pendente pra pré-preencher os dados no signup (senão
+    // a paciente cai no form em branco e o pré-cadastro não serve pra nada).
+    const link = p.token
+      ? `${window.location.origin}/signup-paciente/${user.id}/${p.token}`
+      : `${window.location.origin}/signup-paciente/${user.id}`;
     await navigator.clipboard.writeText(link);
     alert(`Link copiado! Envie pra ${p.nome.split(' ')[0]} por WhatsApp ou email.`);
     await supabase.from('pacientes_pendentes').update({ status: 'enviado' }).eq('id', p.id);

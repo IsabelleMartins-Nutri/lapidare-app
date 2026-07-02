@@ -123,7 +123,9 @@ export default function Visao() {
       }
       const terminando = (pacRes.data ?? [])
         .map(p => {
-          const esperado = CONSULTAS_POR_PLANO[p.tipo_plano];
+          // Case-insensitive: Cadastrar salva "Trimestral" mas o mapa era lowercase.
+          const chave = String(p.tipo_plano ?? '').toLowerCase();
+          const esperado = CONSULTAS_POR_PLANO[chave];
           if (!esperado) return null;
           const feitas = contagem[p.id] ?? 0;
           const restam = esperado - feitas;

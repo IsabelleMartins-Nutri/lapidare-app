@@ -124,33 +124,25 @@ export default function Cadastrar() {
       obs: obs.trim() || null,
       status: 'pendente',
     };
-    // upsert (caso já exista pendente com mesmo email, atualiza dados)
-    let { data, error } = await supabase
-      .from('pacientes_pendentes')
-      .upsert(payload, { onConflict: 'nutri_id,email' })
-      .select('*')
-      .single();
-
-    // Fallback: se o Supabase da nutri ainda não foi atualizado pra v1.11.0,
-    // a coluna "sexo" não existe ainda. Tenta de novo sem o campo + avisa
-    // ela pra rodar o SQL atualizado pra ter a feature completa.
-    if (error && /sexo/i.test(error.message) && /schema cache|column/i.test(error.message)) {
-      const { sexo: _omitido, ...payloadSemSexo } = payload;
-      const retry = await supabase
+    // Usa omitColunasFaltantes pra Supabase desatualizado — cobre sexo E
+    // nascimento (antes só sexo). Se qualquer campo opcional não existir no
+    // schema da nutri, retry sem ele.
+    const { omitColunasFaltantes } = await import('../../lib/utils.js');
+    let { data, error, omitidos } = await omitColunasFaltantes(
+      payload,
+      ['sexo', 'nascimento'],
+      (p) => supabase
         .from('pacientes_pendentes')
-        .upsert(payloadSemSexo, { onConflict: 'nutri_id,email' })
+        .upsert(p, { onConflict: 'nutri_id,email' })
         .select('*')
-        .single();
-      data = retry.data;
-      error = retry.error;
-      if (!error) {
-        // Cadastro funcionou, mas avisa que falta atualizar o banco
-        setErro(
-          'Atenção: cadastro feito, mas o campo "Sexo" não foi salvo porque seu Supabase ' +
-          'ainda não foi atualizado pra v1.11.0. Rode o SQL atualizado: ' +
-          'github.com/danielasoares-rd/lapidare-app/blob/main/supabase/delta-v1.11.0.sql'
-        );
-      }
+        .single(),
+    );
+    if (!error && omitidos && omitidos.length > 0) {
+      setErro(
+        `Atenção: cadastro feito, mas ${omitidos.join(', ')} não foi salvo porque seu Supabase ` +
+        'ainda não foi atualizado. Rode o SQL atualizado: ' +
+        'github.com/danielasoares-rd/lapidare-app/tree/main/supabase'
+      );
     }
 
     setBusy(false);

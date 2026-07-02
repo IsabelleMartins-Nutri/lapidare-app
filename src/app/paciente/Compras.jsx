@@ -42,7 +42,22 @@ export default function Compras() {
   const { user } = useSession();
   const [compras, setCompras] = useState(undefined);
   const [pdfUrl, setPdfUrl] = useState(null);
-  const [marcados, setMarcados] = useState({});
+  // Persistência em localStorage: paciente marca itens no mercado, minimiza o
+  // browser e volta — antes tudo desmarcava (state local). Agora sobrevive
+  // a reloads pelo tempo que ela quiser. Chave por usuário pra não misturar
+  // se paciente e nutri usam o mesmo dispositivo.
+  const chaveMarcados = user?.id ? `compras-marcados-${user.id}` : null;
+  const [marcados, setMarcados] = useState(() => {
+    if (typeof window === 'undefined' || !chaveMarcados) return {};
+    try {
+      const raw = localStorage.getItem(chaveMarcados);
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
+  useEffect(() => {
+    if (!chaveMarcados) return;
+    try { localStorage.setItem(chaveMarcados, JSON.stringify(marcados)); } catch {}
+  }, [marcados, chaveMarcados]);
 
   useEffect(() => {
     let active = true;
