@@ -39,8 +39,11 @@ export default function Checkins() {
         .select('id, paciente_id, perguntas, enviado_em, respondido_em, respostas, lembrete_enviado_em, paciente:pacientes(id, nome)')
         .eq('nutri_id', user.id)
         .order('enviado_em', { ascending: false }),
+      // Lista TODOS os templates (recorrente E pre_consulta) — na v1.13 unificamos
+      // as 2 telas em "Questionários". O filtro antigo por tipo escondia os de
+      // pré-consulta pra sempre. Bug reportado pela Taiane que tinha template
+      // "Questionário Pré-Consulta - Saúde da Mulher" invisível na UI.
       supabase.from('checkin_templates').select('*').eq('nutri_id', user.id)
-        .or('tipo.eq.recorrente,tipo.is.null')
         .order('created_at'),
       supabase.from('checkin_agendamentos')
         // `tipo` é necessário — sem ele, `ag.template?.tipo` fica undefined

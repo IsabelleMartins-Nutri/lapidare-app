@@ -1,5 +1,5 @@
 {
-  "version": "1.15.1",
+  "version": "1.15.2",
   "released_at": "2026-06-30",
-  "notes": "Fix: quando unifiquei Check-ins + Pré-consulta em 'Questionários' (v1.13), a opção pra criar template de pré-consulta sumiu. Agora tem select no modal 'Novo template': Manual (recorrente) OU Automático (envio no cadastro)."
+  "notes": "Fix crítico: templates de pré-consulta estavam sendo ESCONDIDOS da tela Questionários. Query tinha filtro residual `.or(tipo.eq.recorrente,tipo.is.null)` da época em que Check-ins e Pré-consulta eram telas separadas."
 }
