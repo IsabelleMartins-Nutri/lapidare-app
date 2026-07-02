@@ -120,6 +120,39 @@ export function gen(sexo, masc, fem) {
 // ─── Validadores de JSON (Skill 6 e Skill 7) ───
 
 /**
+ * Normaliza um plano vindo da Skill 6 pra o formato canônico.
+ * Aceita nomes alternativos (proteinas_g, carbo_g, gorduras_g, quantidade)
+ * e renomeia pros nomes que o código consome (prot_g, cho_g, lip_g, qty).
+ *
+ * Motivo: a Skill 6 já foi distribuída com prompts diferentes ao longo do
+ * tempo. Se rejeitássemos os formatos antigos, alunas antigas quebrariam.
+ */
+export function normalizarPlano(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const clone = JSON.parse(JSON.stringify(obj));
+  if (clone.macros && typeof clone.macros === 'object') {
+    if (clone.macros.prot_g === undefined && clone.macros.proteinas_g !== undefined) clone.macros.prot_g = clone.macros.proteinas_g;
+    if (clone.macros.cho_g === undefined && clone.macros.carbo_g !== undefined) clone.macros.cho_g = clone.macros.carbo_g;
+    if (clone.macros.lip_g === undefined && clone.macros.gorduras_g !== undefined) clone.macros.lip_g = clone.macros.gorduras_g;
+  }
+  if (Array.isArray(clone.refeicoes)) {
+    for (const r of clone.refeicoes) {
+      if (Array.isArray(r?.alimentos)) {
+        for (const al of r.alimentos) {
+          if (al?.qty === undefined && al?.quantidade !== undefined) al.qty = al.quantidade;
+          if (al?.prot_g === undefined && al?.proteinas_g !== undefined) al.prot_g = al.proteinas_g;
+          // subs: se vier como [{nome}], transforma em ["nome"]
+          if (Array.isArray(al?.subs)) {
+            al.subs = al.subs.map(s => (typeof s === 'string' ? s : (s?.nome || s?.qty || JSON.stringify(s))));
+          }
+        }
+      }
+    }
+  }
+  return clone;
+}
+
+/**
  * Estrutura esperada do plano (Skill 6):
  * {
  *   macros: { kcal, prot_g, cho_g, lip_g, agua_l?, fibras_g? },
@@ -128,6 +161,8 @@ export function gen(sexo, masc, fem) {
  *   ],
  *   validade?: 'YYYY-MM-DD'
  * }
+ * Aceita também o formato antigo (proteinas_g, carbo_g, gorduras_g, quantidade)
+ * — normalizarPlano() cuida da conversão antes de salvar.
  */
 export function validarPlano(obj) {
   if (!obj || typeof obj !== 'object') return { ok: false, erro: 'JSON inválido — esperado objeto.' };

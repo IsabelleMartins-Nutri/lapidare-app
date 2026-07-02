@@ -181,9 +181,11 @@ export default function Plano() {
           <span className="pill ghost" style={{ fontSize: 10 }}>{plano.macros?.kcal} kcal</span>
         </div>
         {[
-          { label: 'Proteína',    v: plano.macros?.prot_g, color: 'var(--red)' },
-          { label: 'Carboidrato', v: plano.macros?.cho_g,  color: 'var(--gold)' },
-          { label: 'Gordura',     v: plano.macros?.lip_g,  color: 'var(--green)' },
+          // Aceita 2 formatos de nome (histórico: alunas geraram JSON com
+          // "proteinas_g" via prompt antigo; código canônico usa "prot_g").
+          { label: 'Proteína',    v: plano.macros?.prot_g ?? plano.macros?.proteinas_g, color: 'var(--red)' },
+          { label: 'Carboidrato', v: plano.macros?.cho_g  ?? plano.macros?.carbo_g,     color: 'var(--gold)' },
+          { label: 'Gordura',     v: plano.macros?.lip_g  ?? plano.macros?.gorduras_g,  color: 'var(--green)' },
         ].map((m, i) => (
           <div key={i} className="macro-row">
             <div className="macro-label"><span>{m.label}</span><span>{m.v}g</span></div>
@@ -225,7 +227,12 @@ export default function Plano() {
               <div className="alimento-row" style={{ background: ai % 2 === 0 ? 'var(--paper)' : 'var(--bg-soft)' }}>
                 <div>
                   <div className="alimento-nome">{al.nome}</div>
-                  {al.qty && <div className="alimento-qty">{al.qty}{al.prot_g ? ` · ${al.prot_g}g prot` : ''}</div>}
+                  {(al.qty || al.quantidade) && (
+                    <div className="alimento-qty">
+                      {al.qty ?? al.quantidade}
+                      {(al.prot_g ?? al.proteinas_g) ? ` · ${al.prot_g ?? al.proteinas_g}g prot` : ''}
+                    </div>
+                  )}
                 </div>
                 {al.kcal && <span className="alimento-kcal">{al.kcal} kcal</span>}
               </div>

@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase.js';
 import { useSession } from '../../lib/session.jsx';
 import {
   dataBR, iniciais,
-  validarPlano, validarLista, validarSubstituicoes, contarItensLista,
+  validarPlano, validarLista, validarSubstituicoes, contarItensLista, normalizarPlano,
   omitColunasFaltantes,
 } from '../../lib/utils.js';
 import { TEMPLATE_PADRAO } from '../../lib/checkinDefault.js';
@@ -741,6 +741,9 @@ function PublicarPlano({ pacienteId, nutriId }) {
     if (temJson) {
       try { dados = JSON.parse(json); }
       catch (e) { return setFeedback({ tipo: 'erro', msg: 'JSON inválido: ' + e.message }); }
+      // Normaliza aliases (proteinas_g → prot_g, quantidade → qty, etc.) antes
+      // de validar e salvar — evita quebrar planos gerados por prompts antigos.
+      dados = normalizarPlano(dados);
       const v = validarPlano(dados);
       if (!v.ok) return setFeedback({ tipo: 'erro', msg: v.erro });
     }
@@ -806,7 +809,7 @@ function PublicarPlano({ pacienteId, nutriId }) {
           />
 
           <DicaJSON
-            exemploPrompt='gera um JSON de plano alimentar pra paciente com objetivo de emagrecimento, 1500 kcal, 4 refeições (café, almoço, lanche, jantar). Estrutura: { "macros": { "kcal": 1500, "proteinas_g": 90, "carbo_g": 150, "gorduras_g": 50, "agua_l": 2.5 }, "refeicoes": [{ "nome": "Café da manhã", "horario": "07:30", "alimentos": [{ "nome": "...", "quantidade": "...", "subs": [{ "nome": "..." }] }] }] }' />
+            exemploPrompt='gera um JSON de plano alimentar pra paciente com objetivo de emagrecimento, 1500 kcal, 4 refeições (café, almoço, lanche, jantar). Use EXATAMENTE estes nomes de campo (não invente nem traduza): { "macros": { "kcal": 1500, "prot_g": 90, "cho_g": 150, "lip_g": 50, "agua_l": 2.5, "fibras_g": 25 }, "refeicoes": [ { "nome": "Café da manhã", "horario": "07:30", "emoji": "☕", "kcal": 350, "alimentos": [ { "nome": "Pão integral", "qty": "2 fatias", "kcal": 140, "prot_g": 6, "subs": ["Tapioca · 2 col sopa", "Aveia · 3 col sopa"] } ], "obs": "beber 1 copo de água antes" } ] }. IMPORTANTE: "subs" deve ser array de STRINGS (não objetos). Use "prot_g", "cho_g", "lip_g" (não "proteinas_g"). Use "qty" (não "quantidade").' />
 
           <UploadPdfField
             pdfFile={pdfFile}
