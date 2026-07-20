@@ -270,7 +270,7 @@ export default function Login() {
             disabled={busy}
             style={{
               width: '100%', padding: '11px 18px',
-              background: 'var(--ink)', color: 'var(--bg-soft)',
+              background: 'var(--ink)', color: 'var(--dark-text)',
               borderRadius: 12, fontSize: 13, fontWeight: 500,
               opacity: busy ? .6 : 1, transition: 'opacity .15s'
             }}>
@@ -319,10 +319,10 @@ function Field({ label, value, onChange, type = 'text', required, placeholder, a
         minLength={minLength}
         style={{
           width: '100%', padding: '10px 12px', fontSize: 13,
-          background: 'var(--bg-soft)',
+          background: 'var(--paper)',
           border: '0.5px solid var(--hair)',
           borderRadius: 10, outline: 'none',
-          color: 'var(--ink)',
+          color: 'var(--ink-soft)',
         }}
       />
     </label>

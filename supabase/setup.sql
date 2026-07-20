@@ -181,6 +181,65 @@ alter table public.peso_registros
 alter table public.peso_registros alter column kg drop not null;
 create index if not exists peso_registros_paciente_id_idx on public.peso_registros(paciente_id, data);
 
+-- 2.7b Exames laboratoriais (evolução de exames bioquímicos) -------
+-- A nutri registra os valores de cada exame numa data (ou só anexa o
+-- PDF do laboratório). `valores` guarda um mapa {parametro: {valor, status}}
+-- pra não precisar de uma coluna por exame — a lista de parâmetros
+-- cresce/evolui só no código, sem precisar de migração de schema.
+create table if not exists public.exames_registros (
+  id            uuid primary key default gen_random_uuid(),
+  paciente_id   uuid not null references public.pacientes(id) on delete cascade,
+  nutri_id      uuid references public.nutris(id) on delete set null,
+  data          date not null default current_date,
+  valores       jsonb,          -- { "glicemia_jejum": { "valor": 92, "status": "normal" }, ... }
+  pdf_url       text,           -- PDF do laboratório (opcional)
+  obs           text,
+  created_at    timestamptz not null default now()
+);
+create index if not exists exames_registros_paciente_id_idx on public.exames_registros(paciente_id, data);
+
+-- 2.7c Exames de imagem (ultrassom, raio-x, densitometria, etc.) ---
+-- Anotação livre da nutri por data — sem parâmetros estruturados,
+-- só título + texto (e opcionalmente o PDF/imagem do laudo).
+create table if not exists public.exames_imagem (
+  id            uuid primary key default gen_random_uuid(),
+  paciente_id   uuid not null references public.pacientes(id) on delete cascade,
+  nutri_id      uuid references public.nutris(id) on delete set null,
+  data          date not null default current_date,
+  titulo        text not null,
+  texto         text,
+  pdf_url       text,
+  created_at    timestamptz not null default now()
+);
+create index if not exists exames_imagem_paciente_id_idx on public.exames_imagem(paciente_id, data);
+
+-- 2.7d Pedidos de exame (a nutri gera um PDF com a lista de exames
+-- pra paciente levar ao laboratório) -------------------------------
+create table if not exists public.pedidos_exame (
+  id            uuid primary key default gen_random_uuid(),
+  paciente_id   uuid not null references public.pacientes(id) on delete cascade,
+  nutri_id      uuid references public.nutris(id) on delete set null,
+  data          date not null default current_date,
+  exames        jsonb not null default '[]',  -- ["Glicemia de jejum", "TSH", ...]
+  obs           text,
+  pdf_url       text,
+  created_at    timestamptz not null default now()
+);
+create index if not exists pedidos_exame_paciente_id_idx on public.pedidos_exame(paciente_id, data);
+
+-- 2.7e Modelos favoritos de pedido de exame -------------------------
+-- Não é por paciente — é da nutri, pra reaproveitar em qualquer paciente
+-- (ex: "Check-up padrão", "Perfil hormonal feminino").
+create table if not exists public.pedidos_exame_modelos (
+  id            uuid primary key default gen_random_uuid(),
+  nutri_id      uuid not null references public.nutris(id) on delete cascade,
+  nome          text not null,
+  exames        jsonb not null default '[]',
+  obs           text,
+  created_at    timestamptz not null default now()
+);
+create index if not exists pedidos_exame_modelos_nutri_id_idx on public.pedidos_exame_modelos(nutri_id);
+
 -- 2.8 Feed de pratos (fotos) ---------------------------------------
 create table if not exists public.feed_pratos (
   id                uuid primary key default gen_random_uuid(),
@@ -390,6 +449,10 @@ alter table public.listas_compras  enable row level security;
 alter table public.prescricoes     enable row level security;
 alter table public.mensagens       enable row level security;
 alter table public.peso_registros  enable row level security;
+alter table public.exames_registros enable row level security;
+alter table public.exames_imagem   enable row level security;
+alter table public.pedidos_exame   enable row level security;
+alter table public.pedidos_exame_modelos enable row level security;
 alter table public.feed_pratos     enable row level security;
 alter table public.gastos          enable row level security;
 alter table public.vendas          enable row level security;
@@ -521,6 +584,48 @@ create policy peso_all_nutri on public.peso_registros
   for all
   using (exists (select 1 from public.pacientes p where p.id = paciente_id and p.nutri_id = auth.uid()))
   with check (exists (select 1 from public.pacientes p where p.id = paciente_id and p.nutri_id = auth.uid()));
+
+-- 4.7b exames_registros / evolução de exames laboratoriais --------
+-- Paciente: apenas lê os próprios registros.
+-- Nutri:    insere, atualiza e remove apenas das próprias pacientes.
+drop policy if exists exames_select_paciente on public.exames_registros;
+create policy exames_select_paciente on public.exames_registros
+  for select using (paciente_id = auth.uid());
+
+drop policy if exists exames_all_nutri on public.exames_registros;
+create policy exames_all_nutri on public.exames_registros
+  for all
+  using (exists (select 1 from public.pacientes p where p.id = paciente_id and p.nutri_id = auth.uid()))
+  with check (exists (select 1 from public.pacientes p where p.id = paciente_id and p.nutri_id = auth.uid()));
+
+-- 4.7c exames_imagem -----------------------------------------------
+drop policy if exists exames_imagem_select_paciente on public.exames_imagem;
+create policy exames_imagem_select_paciente on public.exames_imagem
+  for select using (paciente_id = auth.uid());
+
+drop policy if exists exames_imagem_all_nutri on public.exames_imagem;
+create policy exames_imagem_all_nutri on public.exames_imagem
+  for all
+  using (exists (select 1 from public.pacientes p where p.id = paciente_id and p.nutri_id = auth.uid()))
+  with check (exists (select 1 from public.pacientes p where p.id = paciente_id and p.nutri_id = auth.uid()));
+
+-- 4.7d pedidos_exame -------------------------------------------------
+drop policy if exists pedidos_exame_select_paciente on public.pedidos_exame;
+create policy pedidos_exame_select_paciente on public.pedidos_exame
+  for select using (paciente_id = auth.uid());
+
+drop policy if exists pedidos_exame_all_nutri on public.pedidos_exame;
+create policy pedidos_exame_all_nutri on public.pedidos_exame
+  for all
+  using (exists (select 1 from public.pacientes p where p.id = paciente_id and p.nutri_id = auth.uid()))
+  with check (exists (select 1 from public.pacientes p where p.id = paciente_id and p.nutri_id = auth.uid()));
+
+-- 4.7e pedidos_exame_modelos (só a própria nutri acessa) -----------
+drop policy if exists pedidos_exame_modelos_all_nutri on public.pedidos_exame_modelos;
+create policy pedidos_exame_modelos_all_nutri on public.pedidos_exame_modelos
+  for all
+  using (nutri_id = auth.uid())
+  with check (nutri_id = auth.uid());
 
 -- 4.8 feed_pratos (paciente posta, nutri lê e comenta) ------------
 drop policy if exists feed_select on public.feed_pratos;
@@ -1010,6 +1115,7 @@ end$$;
 alter table public.pacientes        add column if not exists nascimento       date;
 alter table public.pacientes        add column if not exists termo_aceito_em  timestamptz;
 alter table public.pacientes        add column if not exists termo_versao     text;
+alter table public.pacientes        add column if not exists sexo             text default 'feminino' check (sexo in ('feminino', 'masculino'));
 
 alter table public.checkin_templates add column if not exists tipo text not null default 'recorrente';
 alter table public.checkin_templates drop constraint if exists checkin_templates_tipo_check;
@@ -1025,6 +1131,8 @@ alter table public.checkin_envios
 alter table public.pacientes_pendentes
   add column if not exists token uuid not null default gen_random_uuid();
 create unique index if not exists pacientes_pendentes_token_idx on public.pacientes_pendentes(token);
+alter table public.pacientes_pendentes
+  add column if not exists sexo text default 'feminino' check (sexo in ('feminino', 'masculino'));
 
 alter table public.prescricoes drop constraint if exists prescricoes_tipo_check;
 alter table public.prescricoes

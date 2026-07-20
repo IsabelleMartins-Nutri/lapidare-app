@@ -20,6 +20,14 @@ export function mesAno(date = new Date()) {
 /** "09/05/2026" */
 export function dataBR(value) {
   if (!value) return '—';
+  // Datas "YYYY-MM-DD" (sem hora) vindas do Postgres são interpretadas
+  // como UTC por `new Date(string)`, o que desloca 1 dia pra trás em
+  // fusos negativos (Brasil). Aqui construímos a data em horário local
+  // pra evitar esse deslocamento.
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    const [y, m, d] = value.slice(0, 10).split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('pt-BR');
+  }
   const d = typeof value === 'string' ? new Date(value) : value;
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('pt-BR');

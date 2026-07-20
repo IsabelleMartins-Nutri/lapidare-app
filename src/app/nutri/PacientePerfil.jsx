@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
 import { supabase } from '../../lib/supabase.js';
 import { useSession } from '../../lib/session.jsx';
 import {
@@ -265,6 +266,9 @@ export default function PacientePerfil() {
           { id: 'prescricoes', label: 'Prescrições',  icon: 'file-text' },
           { id: 'ebooks',      label: 'E-books',      icon: 'book-2' },
           { id: 'avaliacao',   label: 'Avaliação',    icon: 'ruler-measure' },
+          { id: 'exames',      label: 'Exames',       icon: 'flask' },
+          { id: 'exames_imagem', label: 'Exames de imagem', icon: 'radioactive' },
+          { id: 'pedido_exame', label: 'Pedido de exame', icon: 'clipboard-plus' },
           { id: 'checkin',     label: 'Check-in',     icon: 'clipboard-check' },
         ].map(t => (
           <button
@@ -298,6 +302,9 @@ export default function PacientePerfil() {
       {tab === 'prescricoes' && <EnviarPrescricao pacienteId={paciente.id} nutriId={user.id} />}
       {tab === 'ebooks' && <EbooksDaPaciente pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'avaliacao' && <RegistrarAvaliacao pacienteId={paciente.id} nutriId={user.id} />}
+      {tab === 'exames' && <RegistrarExames pacienteId={paciente.id} nutriId={user.id} />}
+      {tab === 'exames_imagem' && <RegistrarExamesImagem pacienteId={paciente.id} nutriId={user.id} />}
+      {tab === 'pedido_exame' && <PedidoExame pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'checkin' && <CheckinPersonalizado pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
     </>
   );
@@ -693,6 +700,891 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     <button onClick={() => remover(a.id)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', padding: 4 }}
+                      title="Remover">
+                      <i className="ti ti-trash" style={{ fontSize: 15 }} aria-hidden="true"></i>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ============================================================
+   EXAMES LABORATORIAIS
+   ============================================================ */
+const EXAMES_PARAMS = [
+  // Glicêmico
+  { key: 'glicemia_jejum',   label: 'Glicemia de jejum',            unidade: 'mg/dL',      categoria: 'Glicêmico' },
+  { key: 'hba1c',            label: 'Hemoglobina glicada (HbA1c)',  unidade: '%',          categoria: 'Glicêmico' },
+  { key: 'insulina',         label: 'Insulina',                     unidade: 'µU/mL',      categoria: 'Glicêmico' },
+
+  // Perfil lipídico
+  { key: 'colesterol_total', label: 'Colesterol total',             unidade: 'mg/dL',      categoria: 'Perfil lipídico' },
+  { key: 'hdl',              label: 'HDL',                          unidade: 'mg/dL',      categoria: 'Perfil lipídico' },
+  { key: 'ldl',              label: 'LDL',                          unidade: 'mg/dL',      categoria: 'Perfil lipídico' },
+  { key: 'vldl',             label: 'VLDL',                         unidade: 'mg/dL',      categoria: 'Perfil lipídico' },
+  { key: 'triglicerideos',   label: 'Triglicerídeos',               unidade: 'mg/dL',      categoria: 'Perfil lipídico' },
+
+  // Tireoide
+  { key: 'tsh',              label: 'TSH',                          unidade: 'µUI/mL',     categoria: 'Tireoide' },
+  { key: 't4_livre',         label: 'T4 livre',                     unidade: 'ng/dL',      categoria: 'Tireoide' },
+  { key: 't3',               label: 'T3',                           unidade: 'ng/dL',      categoria: 'Tireoide' },
+
+  // Marcadores inflamatórios
+  { key: 'ferritina',        label: 'Ferritina',                    unidade: 'ng/mL',      categoria: 'Marcadores inflamatórios' },
+  { key: 'homocisteina',     label: 'Homocisteína',                 unidade: 'µmol/L',     categoria: 'Marcadores inflamatórios' },
+  { key: 'pcr',              label: 'Proteína C reativa (PCR)',     unidade: 'mg/L',       categoria: 'Marcadores inflamatórios' },
+
+  // Vitaminas
+  { key: 'vitamina_a',       label: 'Vitamina A',                   unidade: 'µg/dL',      categoria: 'Vitaminas' },
+  { key: 'vitamina_b1',      label: 'Vitamina B1 (Tiamina)',        unidade: 'ng/mL',      categoria: 'Vitaminas' },
+  { key: 'vitamina_b2',      label: 'Vitamina B2 (Riboflavina)',    unidade: 'µg/dL',      categoria: 'Vitaminas' },
+  { key: 'vitamina_b6',      label: 'Vitamina B6 (Piridoxina)',     unidade: 'ng/mL',      categoria: 'Vitaminas' },
+  { key: 'vitamina_b12',     label: 'Vitamina B12',                 unidade: 'pg/mL',      categoria: 'Vitaminas' },
+  { key: 'acido_folico',     label: 'Ácido fólico (Vitamina B9)',   unidade: 'ng/mL',      categoria: 'Vitaminas' },
+  { key: 'vitamina_c',       label: 'Vitamina C',                   unidade: 'mg/dL',      categoria: 'Vitaminas' },
+  { key: 'vitamina_d',       label: 'Vitamina D',                   unidade: 'ng/mL',      categoria: 'Vitaminas' },
+  { key: 'vitamina_e',       label: 'Vitamina E',                   unidade: 'mg/L',       categoria: 'Vitaminas' },
+  { key: 'vitamina_k',       label: 'Vitamina K',                   unidade: 'ng/mL',      categoria: 'Vitaminas' },
+
+  // Minerais
+  { key: 'ferro_serico',     label: 'Ferro sérico',                 unidade: 'µg/dL',      categoria: 'Minerais' },
+  { key: 'calcio',           label: 'Cálcio',                       unidade: 'mg/dL',      categoria: 'Minerais' },
+  { key: 'magnesio',         label: 'Magnésio',                     unidade: 'mg/dL',      categoria: 'Minerais' },
+  { key: 'zinco',            label: 'Zinco',                        unidade: 'µg/dL',      categoria: 'Minerais' },
+  { key: 'potassio',         label: 'Potássio',                     unidade: 'mEq/L',      categoria: 'Minerais' },
+  { key: 'sodio',            label: 'Sódio',                        unidade: 'mEq/L',      categoria: 'Minerais' },
+  { key: 'fosforo',          label: 'Fósforo',                      unidade: 'mg/dL',      categoria: 'Minerais' },
+  { key: 'selenio',          label: 'Selênio',                      unidade: 'µg/L',       categoria: 'Minerais' },
+  { key: 'cobre',            label: 'Cobre',                        unidade: 'µg/dL',      categoria: 'Minerais' },
+
+  // Hemograma completo
+  { key: 'hemacias',         label: 'Hemácias',                     unidade: 'milhões/mm³', categoria: 'Hemograma completo' },
+  { key: 'hemoglobina',      label: 'Hemoglobina',                  unidade: 'g/dL',       categoria: 'Hemograma completo' },
+  { key: 'hematocrito',      label: 'Hematócrito',                  unidade: '%',          categoria: 'Hemograma completo' },
+  { key: 'vcm',              label: 'VCM',                          unidade: 'fL',         categoria: 'Hemograma completo' },
+  { key: 'hcm',              label: 'HCM',                          unidade: 'pg',         categoria: 'Hemograma completo' },
+  { key: 'chcm',             label: 'CHCM',                         unidade: 'g/dL',       categoria: 'Hemograma completo' },
+  { key: 'rdw',              label: 'RDW',                          unidade: '%',          categoria: 'Hemograma completo' },
+  { key: 'leucocitos',       label: 'Leucócitos',                   unidade: '/mm³',       categoria: 'Hemograma completo' },
+  { key: 'neutrofilos',      label: 'Neutrófilos',                  unidade: '%',          categoria: 'Hemograma completo' },
+  { key: 'linfocitos',       label: 'Linfócitos',                   unidade: '%',          categoria: 'Hemograma completo' },
+  { key: 'monocitos',        label: 'Monócitos',                    unidade: '%',          categoria: 'Hemograma completo' },
+  { key: 'eosinofilos',      label: 'Eosinófilos',                  unidade: '%',          categoria: 'Hemograma completo' },
+  { key: 'basofilos',        label: 'Basófilos',                    unidade: '%',          categoria: 'Hemograma completo' },
+  { key: 'plaquetas',        label: 'Plaquetas',                    unidade: '/mm³',       categoria: 'Hemograma completo' },
+
+  // Função hepática
+  { key: 'tgo',              label: 'TGO (AST)',                    unidade: 'U/L',        categoria: 'Função hepática' },
+  { key: 'tgp',              label: 'TGP (ALT)',                    unidade: 'U/L',        categoria: 'Função hepática' },
+  { key: 'ggt',              label: 'Gama GT',                      unidade: 'U/L',        categoria: 'Função hepática' },
+  { key: 'fosfatase_alcalina', label: 'Fosfatase alcalina',         unidade: 'U/L',        categoria: 'Função hepática' },
+  { key: 'bilirrubina_total', label: 'Bilirrubina total',           unidade: 'mg/dL',      categoria: 'Função hepática' },
+
+  // Função renal
+  { key: 'ureia',            label: 'Ureia',                        unidade: 'mg/dL',      categoria: 'Função renal' },
+  { key: 'creatinina',       label: 'Creatinina',                   unidade: 'mg/dL',      categoria: 'Função renal' },
+  { key: 'acido_urico',      label: 'Ácido úrico',                  unidade: 'mg/dL',      categoria: 'Função renal' },
+
+  // Intolerâncias
+  { key: 'lactose',          label: 'Teste de intolerância à lactose', unidade: '',         categoria: 'Intolerâncias' },
+  { key: 'gluten',           label: 'Anticorpo antitransglutaminase (glúten)', unidade: 'U/mL', categoria: 'Intolerâncias' },
+];
+
+const EXAMES_STATUS = [
+  { id: 'baixo',     label: 'Baixo',     fg: 'var(--red)',    bg: 'var(--red-soft)' },
+  { id: 'limitrofe', label: 'Limítrofe', fg: 'var(--orange)', bg: 'var(--orange-soft)' },
+  { id: 'normal',    label: 'Normal',    fg: 'var(--green)',  bg: 'var(--green-soft)' },
+  { id: 'alto',      label: 'Alto',      fg: 'var(--red)',    bg: 'var(--red-soft)' },
+];
+
+function RegistrarExames({ pacienteId, nutriId }) {
+  const [historico, setHistorico] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+  const [data, setData] = useState(new Date().toISOString().slice(0, 10));
+  const [valores, setValores] = useState({});
+  const [obs, setObs] = useState('');
+  const [busca, setBusca] = useState('');
+  const [pdfFile, setPdfFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+
+  async function carregar() {
+    const { data: rows } = await supabase
+      .from('exames_registros')
+      .select('id, data, valores, obs, pdf_url')
+      .eq('paciente_id', pacienteId)
+      .order('data', { ascending: false });
+    setHistorico(rows ?? []);
+  }
+  useEffect(() => { carregar(); }, [pacienteId]);
+
+  function setParam(key, campo, val) {
+    setValores(v => ({ ...v, [key]: { ...v[key], [campo]: val } }));
+  }
+
+  function editar(registro) {
+    setEditingId(registro.id);
+    setData(registro.data);
+    setValores(registro.valores ?? {});
+    setObs(registro.obs ?? '');
+    setPdfFile(null);
+    setFeedback(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function cancelarEdicao() {
+    setEditingId(null);
+    setData(new Date().toISOString().slice(0, 10));
+    setValores({});
+    setObs('');
+    setPdfFile(null);
+    setFeedback(null);
+  }
+
+  const paramsFiltrados = EXAMES_PARAMS.filter(p =>
+    p.label.toLowerCase().includes(busca.trim().toLowerCase())
+  );
+  const categoriasFiltradas = [...new Set(paramsFiltrados.map(p => p.categoria))];
+
+  async function salvar() {
+    setFeedback(null);
+    if (!data) return setFeedback({ tipo: 'erro', msg: 'A data é obrigatória.' });
+    const valoresLimpos = Object.fromEntries(
+      Object.entries(valores).filter(([, v]) => v?.valor != null && v.valor !== '')
+    );
+    const registroAtual = editingId ? historico.find(h => h.id === editingId) : null;
+    if (Object.keys(valoresLimpos).length === 0 && !pdfFile && !registroAtual?.pdf_url) {
+      return setFeedback({ tipo: 'erro', msg: 'Preencha ao menos um exame OU anexe o PDF do laboratório.' });
+    }
+    setBusy(true);
+    let pdfUrl = registroAtual?.pdf_url ?? null;
+    try {
+      const novoPdfUrl = await uploadDocumento(pdfFile, { nutriId, pacienteId, tipo: 'exame' });
+      if (novoPdfUrl) pdfUrl = novoPdfUrl;
+    } catch (e) {
+      setBusy(false);
+      return setFeedback({ tipo: 'erro', msg: e.message });
+    }
+    const payload = {
+      paciente_id: pacienteId,
+      nutri_id: nutriId,
+      data,
+      valores: Object.keys(valoresLimpos).length ? valoresLimpos : null,
+      obs: obs.trim() || null,
+      pdf_url: pdfUrl,
+    };
+    const { error } = editingId
+      ? await supabase.from('exames_registros').update(payload).eq('id', editingId)
+      : await supabase.from('exames_registros').insert(payload);
+    setBusy(false);
+    if (error) return setFeedback({ tipo: 'erro', msg: error.message });
+    setFeedback({ tipo: 'ok', msg: editingId ? 'Registro atualizado.' : 'Exame registrado.' });
+    setEditingId(null);
+    setValores({});
+    setObs('');
+    setPdfFile(null);
+    carregar();
+  }
+
+  async function remover(id) {
+    if (!window.confirm('Remover este registro de exames?')) return;
+    await supabase.from('exames_registros').delete().eq('id', id);
+    if (editingId === id) cancelarEdicao();
+    carregar();
+  }
+
+  // Parâmetros que aparecem em pelo menos um registro (pra montar a tabela de evolução)
+  const paramsComDados = EXAMES_PARAMS.filter(p =>
+    historico.some(h => h.valores?.[p.key]?.valor != null)
+  );
+
+  return (
+    <>
+      <div className="card">
+        <div className="card-header">
+          <div>
+            <div className="card-title">{editingId ? 'Editar registro de exames' : 'Novo registro de exames'}</div>
+            <div className="card-sub">Preencha os valores OU anexe o PDF do laboratório — pelo menos um dos dois</div>
+          </div>
+        </div>
+        <div className="card-body">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, maxWidth: 220 }}>
+            <div>
+              <label className="field-label">Data da coleta</label>
+              <input type="date" value={data} onChange={e => setData(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="section-label" style={{ marginTop: 14, marginBottom: 6 }}>Parâmetros</div>
+          <input
+            type="text"
+            placeholder="Buscar exame..."
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            style={{ marginBottom: 10 }}
+          />
+          <div style={{ maxHeight: 360, overflowY: 'auto', border: '0.5px solid var(--hair)', borderRadius: 10 }}>
+            {categoriasFiltradas.map(categoria => (
+              <div key={categoria}>
+                <div style={{
+                  padding: '6px 10px', fontSize: 11, fontWeight: 600, letterSpacing: '.03em',
+                  textTransform: 'uppercase', color: 'var(--muted)', background: 'var(--bg2)',
+                  position: 'sticky', top: 0,
+                }}>
+                  {categoria}
+                </div>
+                {paramsFiltrados.filter(p => p.categoria === categoria).map(p => {
+                  const v = valores[p.key] ?? {};
+                  return (
+                    <div key={p.key} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                      borderBottom: '0.5px solid var(--hair-soft)', flexWrap: 'wrap',
+                    }}>
+                      <div style={{ flex: '1 1 220px', fontSize: 13 }}>
+                        {p.label} <span style={{ color: 'var(--muted)', fontSize: 11 }}>({p.unidade})</span>
+                      </div>
+                      <input
+                        inputMode="decimal"
+                        placeholder="Valor"
+                        value={v.valor ?? ''}
+                        onChange={e => setParam(p.key, 'valor', e.target.value)}
+                        style={{ width: 90, flex: '0 0 auto' }}
+                      />
+                      {EXAMES_STATUS.map(s => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => setParam(p.key, 'status', s.id)}
+                          style={{
+                            flex: '0 0 auto', padding: '5px 10px', fontSize: 11, borderRadius: 6,
+                            border: '0.5px solid var(--hair)',
+                            background: v.status === s.id ? s.bg : 'transparent',
+                            color: v.status === s.id ? s.fg : 'var(--muted)',
+                            fontWeight: v.status === s.id ? 600 : 400,
+                          }}>
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+
+          <label className="field-label" style={{ marginTop: 14 }}>Observação (opcional)</label>
+          <textarea rows="2" value={obs} onChange={e => setObs(e.target.value)}
+            placeholder="Ex: paciente em jejum de 12h, coleta pela manhã." />
+
+          <UploadPdfField
+            pdfFile={pdfFile}
+            setPdfFile={setPdfFile}
+            pdfUrlAtual={editingId ? historico.find(h => h.id === editingId)?.pdf_url : historico[0]?.pdf_url}
+            tipo="exame"
+          />
+
+          {feedback && <FeedbackInline f={feedback} />}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+            {editingId && (
+              <button className="btn-outline" onClick={cancelarEdicao} disabled={busy}>
+                Cancelar edição
+              </button>
+            )}
+            <button className="btn" onClick={salvar} disabled={busy}>
+              <i className="ti ti-check" aria-hidden="true"></i> {busy ? 'Salvando...' : (editingId ? 'Salvar alterações' : 'Registrar exames')}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {paramsComDados.length > 0 && (
+        <>
+          <div className="section-label" style={{ marginTop: 20 }}>Evolução</div>
+          <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Parâmetro</th>
+                  {historico.map(h => <th key={h.id}>{dataBR(h.data)}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {paramsComDados.map(p => (
+                  <tr key={p.key}>
+                    <td>{p.label} <span style={{ color: 'var(--muted)', fontSize: 11 }}>({p.unidade})</span></td>
+                    {historico.map(h => {
+                      const v = h.valores?.[p.key];
+                      const cor = EXAMES_STATUS.find(s => s.id === v?.status);
+                      return (
+                        <td key={h.id}>
+                          {v?.valor != null ? (
+                            <span style={{
+                              color: cor ? cor.fg : 'inherit',
+                              fontWeight: cor && cor.id !== 'normal' ? 600 : 400,
+                            }}>
+                              {v.valor}
+                            </span>
+                          ) : '—'}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      <div className="section-label" style={{ marginTop: 20 }}>Histórico ({historico.length})</div>
+      {historico.length === 0 ? (
+        <div className="card empty-card">
+          <div className="empty-sub">Nenhum exame registrado ainda.</div>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: 0 }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Parâmetros preenchidos</th>
+                <th>PDF</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {historico.map(h => (
+                <tr key={h.id}>
+                  <td>{dataBR(h.data)}</td>
+                  <td>{h.valores ? Object.keys(h.valores).length : 0}</td>
+                  <td>
+                    {h.pdf_url ? (
+                      <a href={h.pdf_url} target="_blank" rel="noopener noreferrer"
+                         title="Abrir PDF"
+                         style={{ color: 'var(--gold-deep)', display: 'inline-flex', alignItems: 'center' }}>
+                        <i className="ti ti-file-download" style={{ fontSize: 16 }} aria-hidden="true"></i>
+                      </a>
+                    ) : <span style={{ color: 'var(--text3)' }}>—</span>}
+                  </td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <button onClick={() => editar(h)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gold-deep)', padding: 4 }}
+                      title="Editar">
+                      <i className="ti ti-pencil" style={{ fontSize: 15 }} aria-hidden="true"></i>
+                    </button>
+                    <button onClick={() => remover(h.id)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', padding: 4 }}
+                      title="Remover">
+                      <i className="ti ti-trash" style={{ fontSize: 15 }} aria-hidden="true"></i>
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ============================================================
+   EXAMES DE IMAGEM (ultrassom, raio-x, densitometria, etc.)
+   ============================================================ */
+function RegistrarExamesImagem({ pacienteId, nutriId }) {
+  const [historico, setHistorico] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+  const [data, setData] = useState(new Date().toISOString().slice(0, 10));
+  const [titulo, setTitulo] = useState('');
+  const [texto, setTexto] = useState('');
+  const [pdfFile, setPdfFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+
+  async function carregar() {
+    const { data: rows } = await supabase
+      .from('exames_imagem')
+      .select('id, data, titulo, texto, pdf_url')
+      .eq('paciente_id', pacienteId)
+      .order('data', { ascending: false });
+    setHistorico(rows ?? []);
+  }
+  useEffect(() => { carregar(); }, [pacienteId]);
+
+  function limpar() {
+    setEditingId(null);
+    setData(new Date().toISOString().slice(0, 10));
+    setTitulo('');
+    setTexto('');
+    setPdfFile(null);
+    setFeedback(null);
+  }
+
+  function editar(registro) {
+    setEditingId(registro.id);
+    setData(registro.data);
+    setTitulo(registro.titulo);
+    setTexto(registro.texto ?? '');
+    setPdfFile(null);
+    setFeedback(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function salvar() {
+    setFeedback(null);
+    if (!data) return setFeedback({ tipo: 'erro', msg: 'A data é obrigatória.' });
+    if (!titulo.trim()) return setFeedback({ tipo: 'erro', msg: 'Dê um título ao exame (ex: "Ultrassom abdominal").' });
+    setBusy(true);
+    const registroAtual = editingId ? historico.find(h => h.id === editingId) : null;
+    let pdfUrl = registroAtual?.pdf_url ?? null;
+    try {
+      const novoPdfUrl = await uploadDocumento(pdfFile, { nutriId, pacienteId, tipo: 'exame_imagem' });
+      if (novoPdfUrl) pdfUrl = novoPdfUrl;
+    } catch (e) {
+      setBusy(false);
+      return setFeedback({ tipo: 'erro', msg: e.message });
+    }
+    const payload = {
+      paciente_id: pacienteId,
+      nutri_id: nutriId,
+      data,
+      titulo: titulo.trim(),
+      texto: texto.trim() || null,
+      pdf_url: pdfUrl,
+    };
+    const { error } = editingId
+      ? await supabase.from('exames_imagem').update(payload).eq('id', editingId)
+      : await supabase.from('exames_imagem').insert(payload);
+    setBusy(false);
+    if (error) return setFeedback({ tipo: 'erro', msg: error.message });
+    setFeedback({ tipo: 'ok', msg: editingId ? 'Registro atualizado.' : 'Exame de imagem registrado.' });
+    limpar();
+    carregar();
+  }
+
+  async function remover(id) {
+    if (!window.confirm('Remover este exame de imagem?')) return;
+    await supabase.from('exames_imagem').delete().eq('id', id);
+    if (editingId === id) limpar();
+    carregar();
+  }
+
+  return (
+    <>
+      <div className="card">
+        <div className="card-header">
+          <div>
+            <div className="card-title">{editingId ? 'Editar exame de imagem' : 'Novo exame de imagem'}</div>
+            <div className="card-sub">Ultrassom, raio-x, densitometria, ressonância, etc. — anote sua leitura do laudo</div>
+          </div>
+        </div>
+        <div className="card-body">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
+            <div>
+              <label className="field-label">Data</label>
+              <input type="date" value={data} onChange={e => setData(e.target.value)} />
+            </div>
+            <div>
+              <label className="field-label">Título *</label>
+              <input type="text" placeholder="Ex: Ultrassom abdominal total"
+                value={titulo} onChange={e => setTitulo(e.target.value)} />
+            </div>
+          </div>
+
+          <label className="field-label" style={{ marginTop: 14 }}>Suas anotações</label>
+          <textarea rows="5" value={texto} onChange={e => setTexto(e.target.value)}
+            placeholder="Ex: esteatose hepática grau I, sem outras alterações. Reforçar orientação de redução de gordura visceral." />
+
+          <UploadPdfField
+            pdfFile={pdfFile}
+            setPdfFile={setPdfFile}
+            pdfUrlAtual={editingId ? historico.find(h => h.id === editingId)?.pdf_url : null}
+            tipo="exame_imagem"
+          />
+
+          {feedback && <FeedbackInline f={feedback} />}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+            {editingId && (
+              <button className="btn-outline" onClick={limpar} disabled={busy}>
+                Cancelar edição
+              </button>
+            )}
+            <button className="btn" onClick={salvar} disabled={busy}>
+              <i className="ti ti-check" aria-hidden="true"></i> {busy ? 'Salvando...' : (editingId ? 'Salvar alterações' : 'Registrar')}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="section-label" style={{ marginTop: 20 }}>Histórico ({historico.length})</div>
+      {historico.length === 0 ? (
+        <div className="card empty-card">
+          <div className="empty-sub">Nenhum exame de imagem registrado ainda.</div>
+        </div>
+      ) : (
+        historico.map(h => (
+          <div key={h.id} className="card" style={{ marginBottom: 10 }}>
+            <div className="card-body">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{h.titulo}</div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>{dataBR(h.data)}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 4, flex: '0 0 auto' }}>
+                  {h.pdf_url && (
+                    <a href={h.pdf_url} target="_blank" rel="noopener noreferrer"
+                       title="Abrir PDF"
+                       style={{ color: 'var(--gold-deep)', padding: 4, display: 'inline-flex' }}>
+                      <i className="ti ti-file-download" style={{ fontSize: 15 }} aria-hidden="true"></i>
+                    </a>
+                  )}
+                  <button onClick={() => editar(h)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gold-deep)', padding: 4 }}
+                    title="Editar">
+                    <i className="ti ti-pencil" style={{ fontSize: 15 }} aria-hidden="true"></i>
+                  </button>
+                  <button onClick={() => remover(h.id)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', padding: 4 }}
+                    title="Remover">
+                    <i className="ti ti-trash" style={{ fontSize: 15 }} aria-hidden="true"></i>
+                  </button>
+                </div>
+              </div>
+              {h.texto && <div style={{ fontSize: 13, marginTop: 8, whiteSpace: 'pre-wrap' }}>{h.texto}</div>}
+            </div>
+          </div>
+        ))
+      )}
+    </>
+  );
+}
+
+/* ============================================================
+   PEDIDO DE EXAME (gera PDF pra paciente levar ao laboratório)
+   ============================================================ */
+function gerarPdfPedidoExame({ pacienteNome, data, exames, obs }) {
+  const doc = new jsPDF();
+  let y = 20;
+
+  doc.setFontSize(16);
+  doc.text('Pedido de exames laboratoriais', 15, y);
+  y += 10;
+
+  doc.setFontSize(11);
+  doc.text(`Paciente: ${pacienteNome}`, 15, y);
+  y += 7;
+  doc.text(`Data: ${dataBR(data)}`, 15, y);
+  y += 12;
+
+  doc.setFontSize(12);
+  doc.text('Exames solicitados:', 15, y);
+  y += 8;
+  doc.setFontSize(11);
+  exames.forEach(nome => {
+    if (y > 275) { doc.addPage(); y = 20; }
+    doc.text(`•  ${nome}`, 20, y);
+    y += 7;
+  });
+
+  if (obs?.trim()) {
+    y += 5;
+    if (y > 260) { doc.addPage(); y = 20; }
+    doc.setFontSize(12);
+    doc.text('Observações:', 15, y);
+    y += 8;
+    doc.setFontSize(11);
+    const linhas = doc.splitTextToSize(obs.trim(), 175);
+    linhas.forEach(linha => {
+      if (y > 275) { doc.addPage(); y = 20; }
+      doc.text(linha, 15, y);
+      y += 6;
+    });
+  }
+
+  return doc.output('blob');
+}
+
+function PedidoExame({ pacienteId, nutriId, pacienteNome }) {
+  const [historico, setHistorico] = useState([]);
+  const [modelos, setModelos] = useState([]);
+  const [data, setData] = useState(new Date().toISOString().slice(0, 10));
+  const [selecionados, setSelecionados] = useState({});
+  const [outros, setOutros] = useState('');
+  const [obs, setObs] = useState('');
+  const [busca, setBusca] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState(null);
+
+  async function carregar() {
+    const { data: rows } = await supabase
+      .from('pedidos_exame')
+      .select('id, data, exames, obs, pdf_url')
+      .eq('paciente_id', pacienteId)
+      .order('data', { ascending: false });
+    setHistorico(rows ?? []);
+  }
+  async function carregarModelos() {
+    const { data: rows } = await supabase
+      .from('pedidos_exame_modelos')
+      .select('id, nome, exames, obs')
+      .eq('nutri_id', nutriId)
+      .order('nome');
+    setModelos(rows ?? []);
+  }
+  useEffect(() => { carregar(); carregarModelos(); }, [pacienteId]);
+
+  function toggle(label) {
+    setSelecionados(s => ({ ...s, [label]: !s[label] }));
+  }
+
+  function usarModelo(modelo) {
+    const novaSelecao = {};
+    (modelo.exames ?? []).forEach(nome => { novaSelecao[nome] = true; });
+    setSelecionados(novaSelecao);
+    setObs(modelo.obs ?? '');
+    setFeedback(null);
+  }
+
+  async function salvarModelo() {
+    const escolhidos = Object.entries(selecionados).filter(([, v]) => v).map(([k]) => k);
+    const extras = outros.split(',').map(s => s.trim()).filter(Boolean);
+    const exames = [...escolhidos, ...extras];
+    if (exames.length === 0) {
+      return setFeedback({ tipo: 'erro', msg: 'Selecione ao menos um exame antes de salvar como modelo.' });
+    }
+    const nome = window.prompt('Nome do modelo (ex: "Check-up padrão"):');
+    if (!nome?.trim()) return;
+    const { error } = await supabase.from('pedidos_exame_modelos').insert({
+      nutri_id: nutriId,
+      nome: nome.trim(),
+      exames,
+      obs: obs.trim() || null,
+    });
+    if (error) return setFeedback({ tipo: 'erro', msg: error.message });
+    setFeedback({ tipo: 'ok', msg: `Modelo "${nome.trim()}" salvo.` });
+    carregarModelos();
+  }
+
+  async function removerModelo(id) {
+    if (!window.confirm('Remover este modelo favorito?')) return;
+    await supabase.from('pedidos_exame_modelos').delete().eq('id', id);
+    carregarModelos();
+  }
+
+  const paramsFiltrados = EXAMES_PARAMS.filter(p =>
+    p.label.toLowerCase().includes(busca.trim().toLowerCase())
+  );
+  const categoriasFiltradas = [...new Set(paramsFiltrados.map(p => p.categoria))];
+
+  async function gerarEsalvar() {
+    setFeedback(null);
+    const escolhidos = Object.entries(selecionados).filter(([, v]) => v).map(([k]) => k);
+    const extras = outros.split(',').map(s => s.trim()).filter(Boolean);
+    const exames = [...escolhidos, ...extras];
+    if (exames.length === 0) {
+      return setFeedback({ tipo: 'erro', msg: 'Selecione ao menos um exame (ou digite em "outros exames").' });
+    }
+    if (!data) return setFeedback({ tipo: 'erro', msg: 'A data é obrigatória.' });
+    setBusy(true);
+    try {
+      const blob = gerarPdfPedidoExame({ pacienteNome, data, exames, obs });
+      const file = new File([blob], `pedido-exame-${data}.pdf`, { type: 'application/pdf' });
+      const pdfUrl = await uploadDocumento(file, { nutriId, pacienteId, tipo: 'pedido_exame' });
+      const { error } = await supabase.from('pedidos_exame').insert({
+        paciente_id: pacienteId,
+        nutri_id: nutriId,
+        data,
+        exames,
+        obs: obs.trim() || null,
+        pdf_url: pdfUrl,
+      });
+      if (error) throw new Error(error.message);
+
+      // Também manda uma cópia pra aba "Prescrições" da paciente, que é
+      // onde o app dela já mostra documentos (tipo "exame") — assim ela
+      // vê o pedido sem a nutri precisar reenviar por fora.
+      const pathPaciente = `${pacienteId}/${Date.now()}-pedido_exame.pdf`;
+      const { error: uploadPacienteErr } = await supabase.storage
+        .from('prescricoes')
+        .upload(pathPaciente, file, { contentType: 'application/pdf' });
+      if (!uploadPacienteErr) {
+        await supabase.from('prescricoes').insert({
+          paciente_id: pacienteId,
+          nutri_id: nutriId,
+          tipo: 'exame',
+          titulo: `Pedido de exame — ${dataBR(data)}`,
+          storage_path: pathPaciente,
+          nota: obs.trim() || null,
+        });
+      }
+
+      setFeedback({
+        tipo: 'ok',
+        msg: uploadPacienteErr
+          ? 'Pedido gerado! (Não consegui enviar automaticamente pra aba Prescrições da paciente — baixe o PDF abaixo e envie por fora.)'
+          : 'Pedido gerado e já apareceu na aba Prescrições do app da paciente!',
+      });
+      setSelecionados({});
+      setOutros('');
+      setObs('');
+      carregar();
+    } catch (e) {
+      setFeedback({ tipo: 'erro', msg: e.message });
+    }
+    setBusy(false);
+  }
+
+  async function remover(id) {
+    if (!window.confirm('Remover este pedido de exame?')) return;
+    await supabase.from('pedidos_exame').delete().eq('id', id);
+    carregar();
+  }
+
+  return (
+    <>
+      {modelos.length > 0 && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div className="card-body">
+            <div className="section-label" style={{ marginBottom: 8 }}>Modelos favoritos</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {modelos.map(m => (
+                <div key={m.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  border: '0.5px solid var(--hair)', borderRadius: 8,
+                  padding: '5px 6px 5px 12px', fontSize: 12,
+                }}>
+                  <button type="button" onClick={() => usarModelo(m)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dark)', fontWeight: 500 }}>
+                    ⭐ {m.nome} <span style={{ color: 'var(--muted)' }}>({(m.exames ?? []).length})</span>
+                  </button>
+                  <button type="button" onClick={() => removerModelo(m.id)}
+                    title="Remover modelo"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', padding: '2px 4px' }}>
+                    <i className="ti ti-x" style={{ fontSize: 13 }} aria-hidden="true"></i>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-header">
+          <div>
+            <div className="card-title">Novo pedido de exame</div>
+            <div className="card-sub">Selecione os exames — a paciente leva o PDF ao laboratório</div>
+          </div>
+        </div>
+        <div className="card-body">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, maxWidth: 220 }}>
+            <div>
+              <label className="field-label">Data</label>
+              <input type="date" value={data} onChange={e => setData(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="section-label" style={{ marginTop: 14, marginBottom: 6 }}>Exames</div>
+          <input
+            type="text"
+            placeholder="Buscar exame..."
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            style={{ marginBottom: 10 }}
+          />
+          <div style={{ maxHeight: 320, overflowY: 'auto', border: '0.5px solid var(--hair)', borderRadius: 10 }}>
+            {categoriasFiltradas.map(categoria => (
+              <div key={categoria}>
+                <div style={{
+                  padding: '6px 10px', fontSize: 11, fontWeight: 600, letterSpacing: '.03em',
+                  textTransform: 'uppercase', color: 'var(--muted)', background: 'var(--bg2)',
+                }}>
+                  {categoria}
+                </div>
+                {paramsFiltrados.filter(p => p.categoria === categoria).map(p => (
+                  <label key={p.key} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
+                    borderBottom: '0.5px solid var(--hair-soft)', fontSize: 13, cursor: 'pointer',
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={!!selecionados[p.label]}
+                      onChange={() => toggle(p.label)}
+                      style={{
+                        width: 16, height: 16, flex: '0 0 auto',
+                        padding: 0, border: '0.5px solid var(--hair)',
+                        borderRadius: 4, background: 'var(--paper)',
+                      }}
+                    />
+                    {p.label}
+                  </label>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          <label className="field-label" style={{ marginTop: 14 }}>Outros exames (opcional, separados por vírgula)</label>
+          <input type="text" value={outros} onChange={e => setOutros(e.target.value)}
+            placeholder="Ex: Curva glicêmica, USG de abdômen" />
+
+          <label className="field-label" style={{ marginTop: 14 }}>Observações / instruções (opcional)</label>
+          <textarea rows="2" value={obs} onChange={e => setObs(e.target.value)}
+            placeholder="Ex: coletar em jejum de 12h." />
+
+          {feedback && <FeedbackInline f={feedback} />}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+            <button className="btn-outline" type="button" onClick={salvarModelo} disabled={busy}>
+              <i className="ti ti-star" aria-hidden="true"></i> Salvar como modelo
+            </button>
+            <button className="btn" onClick={gerarEsalvar} disabled={busy}>
+              <i className="ti ti-file-download" aria-hidden="true"></i> {busy ? 'Gerando...' : 'Gerar PDF do pedido'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="section-label" style={{ marginTop: 20 }}>Histórico ({historico.length})</div>
+      {historico.length === 0 ? (
+        <div className="card empty-card">
+          <div className="empty-sub">Nenhum pedido de exame gerado ainda.</div>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: 0 }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Exames</th>
+                <th>PDF</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {historico.map(h => (
+                <tr key={h.id}>
+                  <td>{dataBR(h.data)}</td>
+                  <td style={{ fontSize: 12 }}>{(h.exames ?? []).join(', ')}</td>
+                  <td>
+                    {h.pdf_url ? (
+                      <a href={h.pdf_url} target="_blank" rel="noopener noreferrer"
+                         title="Baixar PDF"
+                         style={{ color: 'var(--gold-deep)', display: 'inline-flex', alignItems: 'center' }}>
+                        <i className="ti ti-file-download" style={{ fontSize: 16 }} aria-hidden="true"></i>
+                      </a>
+                    ) : <span style={{ color: 'var(--text3)' }}>—</span>}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button onClick={() => remover(h.id)}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', padding: 4 }}
                       title="Remover">
                       <i className="ti ti-trash" style={{ fontSize: 15 }} aria-hidden="true"></i>
@@ -1358,6 +2250,8 @@ function UploadPdfField({ pdfFile, setPdfFile, pdfUrlAtual, tipo }) {
     plano: 'PDF do plano (opcional)',
     substituicoes: 'PDF das substituições (opcional)',
     compras: 'PDF da lista de compras (opcional)',
+    exame: 'PDF do laboratório (opcional)',
+    exame_imagem: 'PDF/laudo do exame (opcional)',
   }[tipo] ?? 'PDF (opcional)';
 
   return (

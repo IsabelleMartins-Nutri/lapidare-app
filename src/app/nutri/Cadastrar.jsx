@@ -297,7 +297,13 @@ export default function Cadastrar() {
                       {p.status === 'enviado' ? '✓ Link enviado' : 'Aguardando envio'}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                  <div style={{
+                    marginTop: 10, padding: '6px 8px',
+                    background: 'var(--bg2)', borderRadius: 6,
+                    fontSize: 10, fontFamily: 'monospace', color: 'var(--text2)',
+                    wordBreak: 'break-all', userSelect: 'all', cursor: 'text',
+                  }}>{linkDe(p)}</div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                     <button className="btn-outline" onClick={() => copiarLink(p)}
                       style={{ fontSize: 11, padding: '4px 10px' }}>
                       <i className="ti ti-copy" aria-hidden="true"></i> Copiar link
