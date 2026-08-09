@@ -29,6 +29,7 @@ const NAV_CONFIG = [
       { id: 'cerebro',          path: '/nutri/cerebro',         label: 'Cérebro do negócio', icon: 'brain' },
       { id: 'servicos',         path: '/nutri/servicos',        label: 'Meus serviços',       icon: 'settings' },
       { id: 'alimentos',        path: '/nutri/alimentos',       label: 'Meus alimentos',      icon: 'apple' },
+      { id: 'beneficios',       path: '/nutri/beneficios',      label: 'Benefícios',          icon: 'gift' },
       { id: 'previsibilidade',  path: '/nutri/previsibilidade', label: 'Previsibilidade',     icon: 'trending-up' },
       { id: 'financeiro',       path: '/nutri/financeiro',      label: 'Financeiro real',     icon: 'credit-card' },
       { id: 'personalizacao',   path: '/nutri/personalizacao',  label: 'Personalização',      icon: 'palette' },
@@ -102,7 +103,7 @@ export default function NutriLayout() {
           {tema.logo_url ? (
             <img src={tema.logo_url} alt={tema.marca_nome}
               className="sidebar-logo"
-              style={{ maxHeight: 36, maxWidth: '80%', objectFit: 'contain', marginBottom: 6 }} />
+              style={{ maxHeight: 64, maxWidth: '92%', objectFit: 'contain', marginBottom: 6 }} />
           ) : null}
           <div className="sidebar-brand">{tema.marca_nome}</div>
           <div className="sidebar-title">{tema.marca_subtitulo || 'Painel da Nutri'}</div>

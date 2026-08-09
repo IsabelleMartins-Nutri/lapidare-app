@@ -723,6 +723,23 @@ create table if not exists public.servicos (
 );
 create index if not exists servicos_nutri_idx on public.servicos(nutri_id, ativo);
 
+-- 2.8b Benefícios (cupons/parcerias — cadastrado 1x, visível pra TODAS
+-- as pacientes da nutri, diferente de plano/substituições que são por
+-- paciente) -----------------------------------------------------------
+create table if not exists public.beneficios (
+  id            uuid primary key default gen_random_uuid(),
+  nutri_id      uuid not null references public.nutris(id) on delete cascade,
+  marca         text not null,
+  descricao     text,
+  imagem_url    text,
+  link          text,
+  cupom         text,
+  ativo         boolean not null default true,
+  ordem         integer not null default 0,
+  created_at    timestamptz not null default now()
+);
+create index if not exists beneficios_nutri_idx on public.beneficios(nutri_id, ativo, ordem);
+
 -- 2.9 Vendas (financeiro) ------------------------------------------
 create table if not exists public.vendas (
   id            uuid primary key default gen_random_uuid(),
@@ -903,6 +920,7 @@ alter table public.checkin_templates     enable row level security;
 alter table public.checkin_envios        enable row level security;
 alter table public.checkin_agendamentos  enable row level security;
 alter table public.servicos              enable row level security;
+alter table public.beneficios            enable row level security;
 alter table public.alimentos             enable row level security;
 
 
@@ -1147,6 +1165,21 @@ create policy checkin_agendamentos_all_nutri on public.checkin_agendamentos
 -- Serviços: nutri gerencia os próprios (paciente não vê)
 drop policy if exists servicos_all_nutri on public.servicos;
 create policy servicos_all_nutri on public.servicos
+  for all using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
+
+-- Benefícios: nutri gerencia os próprios; QUALQUER paciente dela pode
+-- ler (diferente de todo o resto do app, que é escopado por paciente_id
+-- — aqui não existe paciente_id, é compartilhado entre todas as
+-- pacientes daquela nutri).
+drop policy if exists beneficios_select on public.beneficios;
+create policy beneficios_select on public.beneficios
+  for select using (
+    nutri_id = auth.uid()
+    or exists (select 1 from public.pacientes p where p.id = auth.uid() and p.nutri_id = beneficios.nutri_id)
+  );
+
+drop policy if exists beneficios_write_nutri on public.beneficios;
+create policy beneficios_write_nutri on public.beneficios
   for all using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
 
 -- 4.10b fotos_evolucao (paciente vê próprias; nutri vê das pacientes)
@@ -1670,6 +1703,22 @@ create table if not exists public.followups (
 create index if not exists followups_paciente_idx on public.followups(paciente_id, data desc, created_at desc);
 create index if not exists followups_nutri_idx    on public.followups(nutri_id);
 
+-- Evolução de hábitos/sintomas relatados — a nutri escreve manualmente o
+-- que a paciente relatou sobre um item (ex: "Intestino", "Sono") a cada
+-- consulta, formando um histórico. Diferente do habit tracker (paciente
+-- marca diariamente) e do check-in (perguntas fixas) — aqui é 100% texto
+-- livre, escrito só pela nutri, pra usar no Modo Apresentação da Evolução.
+create table if not exists public.evolucao_habitos (
+  id            uuid primary key default gen_random_uuid(),
+  paciente_id   uuid not null references public.pacientes(id) on delete cascade,
+  nutri_id      uuid not null references public.nutris(id) on delete cascade,
+  item          text not null,
+  nota          text not null,
+  data          date not null default current_date,
+  created_at    timestamptz not null default now()
+);
+create index if not exists evolucao_habitos_paciente_idx on public.evolucao_habitos(paciente_id, item, data);
+
 
 -- 10.4 Suplementação (lista + habit tracker) -------------------
 create table if not exists public.suplementos (
@@ -1704,6 +1753,7 @@ alter table public.ebooks              enable row level security;
 alter table public.ebooks_pacientes    enable row level security;
 alter table public.followup_templates  enable row level security;
 alter table public.followups           enable row level security;
+alter table public.evolucao_habitos    enable row level security;
 alter table public.suplementos         enable row level security;
 alter table public.suplementos_logs    enable row level security;
 
@@ -1734,6 +1784,9 @@ create policy followup_templates_all_nutri on public.followup_templates for all
   using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
 drop policy if exists followups_all_nutri on public.followups;
 create policy followups_all_nutri on public.followups for all
+  using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
+drop policy if exists evolucao_habitos_all_nutri on public.evolucao_habitos;
+create policy evolucao_habitos_all_nutri on public.evolucao_habitos for all
   using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
 
 -- suplementos (nutri gerencia, paciente vê os próprios)

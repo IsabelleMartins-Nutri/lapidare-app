@@ -25,6 +25,8 @@ import Cadastrar from './app/nutri/Cadastrar.jsx';
 import Cerebro from './app/nutri/Cerebro.jsx';
 import Servicos from './app/nutri/Servicos.jsx';
 import MeusAlimentos from './app/nutri/MeusAlimentos.jsx';
+import BeneficiosNutri from './app/nutri/Beneficios.jsx';
+import BeneficiosPaciente from './app/paciente/Beneficios.jsx';
 import Previsibilidade from './app/nutri/Previsibilidade.jsx';
 import Financeiro from './app/nutri/Financeiro.jsx';
 import Biblioteca from './app/nutri/Biblioteca.jsx';
@@ -73,6 +75,7 @@ export default function App() {
             <Route path="/nutri/cerebro" element={<Cerebro />} />
             <Route path="/nutri/servicos" element={<Servicos />} />
             <Route path="/nutri/alimentos" element={<MeusAlimentos />} />
+            <Route path="/nutri/beneficios" element={<BeneficiosNutri />} />
             <Route path="/nutri/previsibilidade" element={<Previsibilidade />} />
             <Route path="/nutri/financeiro" element={<Financeiro />} />
             <Route path="/nutri/biblioteca" element={<Biblioteca />} />
@@ -92,6 +95,7 @@ export default function App() {
             <Route path="/paciente/ebooks" element={<EbooksPaciente />} />
             <Route path="/paciente/suplementos" element={<SuplementosPaciente />} />
             <Route path="/paciente/habitos" element={<HabitosPaciente />} />
+            <Route path="/paciente/beneficios" element={<BeneficiosPaciente />} />
             <Route path="/paciente/checkin/:envioId" element={<Checkin />} />
           </Route>
 

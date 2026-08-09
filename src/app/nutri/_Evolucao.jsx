@@ -35,6 +35,8 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [comparar, setComparar] = useState({ a: null, b: null });
   const [verCheckin, setVerCheckin] = useState(null);
+  const [habitosRelatados, setHabitosRelatados] = useState([]);
+  const [registrarHabito, setRegistrarHabito] = useState(null); // null = fechado, { item } = aberto (item pré-preenchido opcional)
 
   // Cleanup: quando pacienteId muda antes do fetch antigo terminar, o `active`
   // flag garante que resultados obsoletos não sobrescrevam o estado da paciente
@@ -42,13 +44,14 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
   useEffect(() => {
     let active = true;
     async function carregar() {
-      const [avRes, ftRes, ckRes, plRes, prRes, csRes] = await Promise.all([
+      const [avRes, ftRes, ckRes, plRes, prRes, csRes, ehRes] = await Promise.all([
         supabase.from('peso_registros').select('*').eq('paciente_id', pacienteId).order('data'),
         supabase.from('fotos_evolucao').select('*').eq('paciente_id', pacienteId).order('data_foto'),
         supabase.from('checkin_envios').select('id, perguntas, respostas, respondido_em, enviado_em').eq('paciente_id', pacienteId).not('respondido_em', 'is', null).order('respondido_em'),
         supabase.from('planos').select('id, dados, publicado_em').eq('paciente_id', pacienteId).order('publicado_em'),
         supabase.from('prescricoes').select('id, tipo, titulo, created_at').eq('paciente_id', pacienteId).order('created_at'),
         supabase.from('consultas').select('id, tipo, data_hora, status').eq('paciente_id', pacienteId).order('data_hora'),
+        supabase.from('evolucao_habitos').select('*').eq('paciente_id', pacienteId).order('data'),
       ]);
       if (!active) return;
       setAvaliacoes(avRes.data ?? []);
@@ -57,6 +60,7 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
       setPlanos(plRes.data ?? []);
       setPrescricoes(prRes.data ?? []);
       setConsultas(csRes.data ?? []);
+      setHabitosRelatados(ehRes.data ?? []);
 
       // pré-fetch signed URLs
       const novasUrls = {};
@@ -86,13 +90,14 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
 
   // Wrapper pra manter compat com handlers que chamam carregar() explicitamente.
   async function carregar() {
-    const [avRes, ftRes, ckRes, plRes, prRes, csRes] = await Promise.all([
+    const [avRes, ftRes, ckRes, plRes, prRes, csRes, ehRes] = await Promise.all([
       supabase.from('peso_registros').select('*').eq('paciente_id', pacienteId).order('data'),
       supabase.from('fotos_evolucao').select('*').eq('paciente_id', pacienteId).order('data_foto'),
       supabase.from('checkin_envios').select('id, perguntas, respostas, respondido_em, enviado_em').eq('paciente_id', pacienteId).not('respondido_em', 'is', null).order('respondido_em'),
       supabase.from('planos').select('id, dados, publicado_em').eq('paciente_id', pacienteId).order('publicado_em'),
       supabase.from('prescricoes').select('id, tipo, titulo, created_at').eq('paciente_id', pacienteId).order('created_at'),
       supabase.from('consultas').select('id, tipo, data_hora, status').eq('paciente_id', pacienteId).order('data_hora'),
+      supabase.from('evolucao_habitos').select('*').eq('paciente_id', pacienteId).order('data'),
     ]);
     setAvaliacoes(avRes.data ?? []);
     setFotos(ftRes.data ?? []);
@@ -100,8 +105,34 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
     setPlanos(plRes.data ?? []);
     setPrescricoes(prRes.data ?? []);
     setConsultas(csRes.data ?? []);
+    setHabitosRelatados(ehRes.data ?? []);
     setCarregando(false);
   }
+
+  async function excluirHabitoRelatado(h) {
+    if (!window.confirm(`Excluir esse relato de "${h.item}"?`)) return;
+    await supabase.from('evolucao_habitos').delete().eq('id', h.id);
+    carregar();
+  }
+
+  // Agrupa os relatos por item (nome normalizado — trim + minúsculo evita
+  // duplicar "Intestino" e "intestino " como cards diferentes), mantendo o
+  // rótulo original do primeiro relato de cada grupo pra exibir.
+  const gruposHabitos = useMemo(() => {
+    const mapa = new Map();
+    for (const h of habitosRelatados) {
+      const chave = h.item.trim().toLowerCase();
+      if (!mapa.has(chave)) mapa.set(chave, { item: h.item.trim(), relatos: [] });
+      mapa.get(chave).relatos.push(h);
+    }
+    for (const g of mapa.values()) g.relatos.sort((a, b) => a.data.localeCompare(b.data));
+    return [...mapa.values()].sort((a, b) => a.item.localeCompare(b.item));
+  }, [habitosRelatados]);
+
+  const itensExistentes = useMemo(
+    () => [...new Set(habitosRelatados.map(h => h.item.trim()))].sort(),
+    [habitosRelatados],
+  );
 
   async function excluirFoto(foto) {
     if (!window.confirm(`Excluir foto de ${dataBR(foto.data_foto)}? Esta ação não pode ser desfeita.`)) return;
@@ -266,6 +297,7 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
         totalDias={totalDias}
         fotoA={fotoA} fotoB={fotoB}
         urls={urls}
+        gruposHabitos={gruposHabitos}
         onClose={() => setApresentacao(false)}
       />
     );
@@ -428,6 +460,57 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
         </div>
       )}
 
+      {/* Hábitos e sintomas relatados */}
+      <div className="section-header" style={{ marginTop: 18 }}>
+        <div className="section-title">Hábitos e sintomas relatados</div>
+        <button className="btn-outline" onClick={() => setRegistrarHabito({ item: '' })}>
+          <i className="ti ti-plus" aria-hidden="true"></i> Registrar relato
+        </button>
+      </div>
+      {gruposHabitos.length === 0 ? (
+        <div className="card empty-card">
+          <i className="ti ti-message-2 empty-icon" aria-hidden="true"></i>
+          <div className="empty-title">Nada registrado ainda</div>
+          <div className="empty-sub">
+            Anote o que a paciente for relatando a cada consulta (ex: intestino, inchaço, sono) — o histórico
+            de cada item fica agrupado aqui e aparece no Modo apresentação.
+          </div>
+          <button className="btn" onClick={() => setRegistrarHabito({ item: '' })}>
+            <i className="ti ti-plus" aria-hidden="true"></i> Registrar primeiro relato
+          </button>
+        </div>
+      ) : (
+        gruposHabitos.map(g => (
+          <div key={g.item} className="card" style={{ padding: 14, marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--dark)' }}>{g.item}</div>
+              <button className="btn-outline" style={{ fontSize: 11, padding: '3px 8px' }}
+                onClick={() => setRegistrarHabito({ item: g.item })}>
+                <i className="ti ti-plus" aria-hidden="true"></i> Novo relato
+              </button>
+            </div>
+            {g.relatos.map(h => (
+              <div key={h.id} style={{
+                display: 'flex', gap: 10, alignItems: 'flex-start',
+                padding: '8px 0', borderTop: '0.5px solid #f5f0e8',
+              }}>
+                <div style={{ fontSize: 11, color: 'var(--text3)', flexShrink: 0, width: 76 }}>
+                  {dataBR(h.data)}
+                </div>
+                <div style={{ flex: 1, fontSize: 13, color: 'var(--text2)' }}>{h.nota}</div>
+                <button onClick={() => excluirHabitoRelatado(h)} title="Excluir"
+                  style={{
+                    background: 'none', border: '0.5px solid var(--red)',
+                    borderRadius: 6, padding: '3px 7px', color: 'var(--red)', cursor: 'pointer', flexShrink: 0,
+                  }}>
+                  <i className="ti ti-trash" style={{ fontSize: 12 }} aria-hidden="true"></i>
+                </button>
+              </div>
+            ))}
+          </div>
+        ))
+      )}
+
       {/* Timeline */}
       <div className="section-header" style={{ marginTop: 18 }}>
         <div className="section-title">Linha do tempo</div>
@@ -479,6 +562,17 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
           </div>
         ))}
       </div>
+
+      {registrarHabito && (
+        <ModalRegistrarHabito
+          pacienteId={pacienteId}
+          nutriId={nutriId}
+          itemInicial={registrarHabito.item}
+          itensExistentes={itensExistentes}
+          onClose={() => setRegistrarHabito(null)}
+          onSaved={async () => { setRegistrarHabito(null); await carregar(); }}
+        />
+      )}
 
       {uploadOpen && (
         <UploadFoto
@@ -672,9 +766,76 @@ function UploadFoto({ pacienteId, nutriId, onClose, onSaved }) {
 }
 
 /* ============================================================
+   REGISTRAR RELATO DE HÁBITO/SINTOMA
+   ============================================================ */
+function ModalRegistrarHabito({ pacienteId, nutriId, itemInicial, itensExistentes, onClose, onSaved }) {
+  const [item, setItem] = useState(itemInicial ?? '');
+  const [nota, setNota] = useState('');
+  const [data, setData] = useState(new Date().toISOString().slice(0, 10));
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState(null);
+
+  async function salvar() {
+    setErro(null);
+    if (!item.trim()) return setErro('Informe o item (ex: Intestino, Sono, Inchaço).');
+    if (!nota.trim()) return setErro('Escreva o que a paciente relatou.');
+    setBusy(true);
+    const { error } = await supabase.from('evolucao_habitos').insert({
+      paciente_id: pacienteId,
+      nutri_id: nutriId,
+      item: item.trim(),
+      nota: nota.trim(),
+      data,
+    });
+    setBusy(false);
+    if (error) return setErro('Erro: ' + error.message);
+    onSaved();
+  }
+
+  return (
+    <ModalShell title="Registrar relato"
+      subtitle="Anotação sua — não aparece no app da paciente"
+      onClose={onClose}>
+      <label className="form-lbl" style={{ marginTop: 0 }}>Item</label>
+      <input value={item} onChange={e => setItem(e.target.value)}
+        placeholder="Ex: Intestino, Sono, Inchaço abdominal"
+        list="itens-habitos-existentes" />
+      {itensExistentes.length > 0 && (
+        <datalist id="itens-habitos-existentes">
+          {itensExistentes.map(i => <option key={i} value={i} />)}
+        </datalist>
+      )}
+
+      <label className="form-lbl">Data</label>
+      <input type="date" value={data} onChange={e => setData(e.target.value)} />
+
+      <label className="form-lbl">O que ela relatou</label>
+      <textarea rows={4} value={nota} onChange={e => setNota(e.target.value)}
+        placeholder="Ex: Intestino funcionando 3x por semana, sem mais inchaço depois das refeições" />
+
+      {erro && (
+        <div style={{
+          background: 'var(--red-bg)', color: 'var(--red)',
+          padding: '6px 10px', borderRadius: 6, fontSize: 11, marginTop: 10,
+        }}>{erro}</div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        <button className="btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={onClose}>
+          Cancelar
+        </button>
+        <button className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={salvar} disabled={busy}>
+          <i className="ti ti-check" aria-hidden="true"></i> {busy ? 'Salvando...' : 'Salvar relato'}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+/* ============================================================
    MODO APRESENTAÇÃO (fullscreen pra consulta)
    ============================================================ */
-function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaCintura, deltaPgc, totalDias, fotoA, fotoB, urls, onClose }) {
+function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaCintura, deltaPgc, totalDias, fotoA, fotoB, urls, gruposHabitos, onClose }) {
   const primeira = avaliacoes[0];
   const ultima   = avaliacoes[avaliacoes.length - 1];
   return (
@@ -795,6 +956,52 @@ function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaCintura, delta
                       {dataBR(x.foto.data_foto)}
                     </div>
                   )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Hábitos e sintomas relatados */}
+        {gruposHabitos.length > 0 && (
+          <>
+            <h2 style={{
+              fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 500,
+              color: 'var(--dark)', marginBottom: 18,
+            }}>
+              Evolução relatada
+            </h2>
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+              gap: 14, marginBottom: 32,
+            }}>
+              {gruposHabitos.map(g => (
+                <div key={g.item} style={{
+                  background: 'var(--white)', border: '0.5px solid var(--border)',
+                  borderRadius: 14, padding: '22px 26px',
+                }}>
+                  <div style={{
+                    fontFamily: 'var(--font-serif)', fontSize: 20, color: 'var(--dark)',
+                    marginBottom: 14,
+                  }}>
+                    {g.item}
+                  </div>
+                  {g.relatos.map((h, i) => (
+                    <div key={h.id} style={{
+                      display: 'flex', gap: 12, alignItems: 'flex-start',
+                      paddingTop: i === 0 ? 0 : 12,
+                      marginTop: i === 0 ? 0 : 12,
+                      borderTop: i === 0 ? 'none' : '0.5px solid var(--border)',
+                    }}>
+                      <div style={{
+                        fontSize: 12, color: 'var(--gold-deep, #a08456)', fontWeight: 500,
+                        flexShrink: 0, width: 78,
+                      }}>
+                        {dataBR(h.data)}
+                      </div>
+                      <div style={{ fontSize: 15, color: 'var(--text2)', lineHeight: 1.5 }}>{h.nota}</div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>

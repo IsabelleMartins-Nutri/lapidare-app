@@ -11,8 +11,13 @@
 
 - Cada nutri tem **o próprio deploy** (faz fork do GitHub + cria Supabase próprio + deploya no Netlify)
 - Zero custo recorrente (tudo plano free)
-- Distribuído via [github.com/danielasoares-rd/lapidare-app](https://github.com/danielasoares-rd/lapidare-app)
+- Distribuído via [github.com/danielasoares-rd/lapidare-app](https://github.com/danielasoares-rd/lapidare-app) (template original, mantido pela Daniela)
 - Deploy de referência: [lapidareapp.netlify.app](https://lapidareapp.netlify.app)
+
+**Este fork específico (Isabelle Martins):**
+- Repositório: [github.com/IsabelleMartins-Nutri/lapidare-app](https://github.com/IsabelleMartins-Nutri/lapidare-app) (`origin`) — `upstream` aponta pro repo da Daniela, pra trazer atualizações do template quando ela lançar
+- App publicado: [isabellemartins.netlify.app](https://isabellemartins.netlify.app)
+- Clonado localmente em: `/Users/isabellemartins/Documents/lapidare-app`
 
 ---
 
@@ -123,17 +128,19 @@ Mudanças devem ser:
 
 ---
 
-## CONTEXTO ATUAL (estado em maio/2026)
+## CONTEXTO ATUAL — FORK DA ISABELLE (estado em ago/2026)
 
-- Lapidare v1.x em produção
-- 3+ nutris ativas (Daniela + Kelly + Carla)
-- Últimas mudanças: personalização avançada (cor sidebar, nome/foto da nutri pra paciente ver), fix logo upload, mensagens de erro amigáveis
+Isabelle usa esse fork sozinha, pro próprio consultório — não é o contexto multi-nutri da Daniela (essa seção descreve especificamente o uso dela, separado do "CONTEXTO" genérico do template lá em cima).
 
-**Próximos passos sugeridos** (ver NOTES.md):
-- Banner "Atualização de banco pendente" no app (auto-detect)
-- Integração WhatsApp Business API
-- Notificações push no PWA da paciente
-- Melhoria da importação de CSV (suporte XLSX)
+**Customizações já implementadas juntas** (além do que já vinha no template):
+- Editor visual de plano alimentar (sem JSON) com busca de alimentos — base de dados própria (`alimentos`, populada com a tabela TACO enviada pela Daniela), autocompletar preenche kcal/macros
+- Histórico de planos com ativar/desativar (mantém todos os planos antigos, só troca qual fica visível pra paciente) + prévia antes de publicar + editar/duplicar plano existente
+- Aba "Meus alimentos" pra cadastrar alimentos próprios que não estão na base
+- Aba "Benefícios" — cupons/parcerias cadastradas pela nutri, visíveis a todas as pacientes dela
+- "Evolução relatada" — registro manual de hábitos/sintomas relatados pela paciente a cada consulta, com timeline dedicada e seção própria no Modo Apresentação
+- Ajustes visuais: contraste do topbar, tamanho da logo na sidebar
+
+**Sem lista fixa de "próximos passos"** — o trabalho aqui é conduzido pelo que a Isabelle pedir sessão a sessão, não por um roadmap predefinido.
 
 ---
 
@@ -147,4 +154,41 @@ Se ela mencionar "DS Company", "esteira de serviços", "mentoradas", "Painel-Men
 
 ---
 
+## ANTES DE QUALQUER FEATURE — SEMPRE CONFIRMAR COM A ISABELLE
+
+Isabelle não tem background técnico/de programação. Pra qualquer feature nova — em planejamento OU em execução — **nunca parta direto pra implementar**. Antes de codar (ou antes de fechar um plano), sempre:
+
+1. **Pergunte o que não estiver claro.** Não assuma o que ela quis dizer se der pra interpretar de mais de um jeito — pergunte (`AskUserQuestion`).
+2. **Aponte conflitos.** Se o pedido esbarrar em algo que já existe, numa decisão anterior, ou numa limitação técnica real, avise antes de seguir — não tente "resolver por baixo dos panos".
+3. **Confirme os detalhes da abordagem** antes de implementar (escopo, onde vai aparecer no app, o que muda pra ela/pras pacientes) — não só "o quê", mas "como vai ficar".
+4. **Explique como pra alguém que não entende de tecnologia.** Sem jargão técnico sem explicação (SQL, RLS, merge, etc. só se necessário, e aí explicando o que é em 1 frase). Usa exemplos do dia a dia do consultório dela, não do código.
+
+Isso vale tanto em plan mode quanto em conversas normais — o objetivo é nunca surpreendê-la com uma implementação que ela não entendeu ou não pediu daquele jeito.
+
+---
+
+## FLUXO DE TRABALHO — COMMITS E MERGES (Isabelle)
+
+Esse fork é personalizado e mantido pela Isabelle Martins — as regras abaixo valem pro trabalho dela nesse repositório, além de tudo que já está escrito acima.
+
+### 1. Padrão de commit pra mudanças customizadas
+Toda mudança que a gente implementar juntos (uma feature nova, um ajuste que ela pediu) recebe uma mensagem de commit começando com `custom: `, seguida de uma descrição curta do que mudou. Exemplos:
+
+```
+custom: adiciona editor visual de plano alimentar
+custom: adiciona aba de benefícios/cupons de parceiros
+custom: corrige contraste do topbar no painel da nutri
+```
+
+**Por quê:** separa no `git log` tudo que é customização da Isabelle daquilo que vier de um merge do `upstream` (Daniela) — essencial pra resolver conflitos de forma clara quando ela sincronizar atualizações do template, e pra saber de cara a origem de qualquer mudança no histórico.
+
+### 2. Testar antes de commitar
+Antes de qualquer commit, rodar lint (`npx eslint` nos arquivos alterados) e build (`npx vite build`) pra confirmar que não quebrou nada.
+
+### 3. Alertar sobre risco de sobrescrita em merges do upstream
+Ao trazer atualizações da Daniela (`upstream`) — seja num merge de verdade, seja só analisando o que ela mudou antes de decidir trazer — se uma mudança dela for alterar ou sobrescrever algo que foi implementado com a Isabelle (mesmo arquivo/função, ou uma feature equivalente em outro lugar do código), **avisar explicitamente antes de aplicar**: explicar o que cada lado faz, e não decidir sozinho qual versão fica. Isso vale tanto pra conflitos que o Git já sinaliza automaticamente quanto pra sobreposições "silenciosas" (features parecidas em lugares diferentes do código, que o Git não marca como conflito).
+
+---
+
 _Última atualização: maio/2026 · Daniela Soares + Claude_
+_Seções "Antes de qualquer feature — sempre confirmar com a Isabelle", "Fluxo de trabalho — commits e merges (Isabelle)" e dados do fork/contexto atual adicionadas em ago/2026, específicas pro fork da Isabelle Martins._
