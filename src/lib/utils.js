@@ -174,8 +174,9 @@ export function normalizarPlano(obj) {
  */
 export function validarPlano(obj) {
   if (!obj || typeof obj !== 'object') return { ok: false, erro: 'JSON inválido — esperado objeto.' };
-  if (!obj.macros || typeof obj.macros !== 'object') {
-    return { ok: false, erro: 'Faltou o campo "macros" (objeto com kcal, prot_g, cho_g, lip_g).' };
+  // "macros" é opcional — se vier, precisa ser um objeto (não string/array/etc).
+  if (obj.macros !== undefined && obj.macros !== null && typeof obj.macros !== 'object') {
+    return { ok: false, erro: 'O campo "macros", se informado, precisa ser um objeto (com kcal, prot_g, cho_g, lip_g).' };
   }
   if (!Array.isArray(obj.refeicoes) || obj.refeicoes.length === 0) {
     return { ok: false, erro: 'Faltou o campo "refeicoes" (array com pelo menos uma refeição).' };
@@ -300,9 +301,12 @@ export function indexarSubstituicoes(dados) {
  * Gera as parcelas a partir de uma venda. Retorna array de
  * { numero, valor, vencimento (YYYY-MM-DD) }.
  *
- *  pix/credito1x/dinheiro → 1 parcela única (vencimento = data_venda)
- *  parcelado              → N parcelas mensais (1ª na data, demais +1 mês cada)
- *  asaas (recorrente)     → N meses, vencimento no dia escolhido
+ *  pix/dinheiro  → 1 parcela única (vencimento = data_venda)
+ *  credito1x     → 1 parcela única (vencimento = data_venda + 32 dias —
+ *                  tempo real que a operadora leva pra depositar)
+ *  parcelado     → N parcelas mensais, cada uma +32 dias depois do seu
+ *                  vencimento mensal nominal (mesmo motivo do credito1x)
+ *  asaas (recorrente) → N meses, vencimento no dia escolhido
  */
 export function gerarParcelas({ forma_pgto, valor_total, data_venda, n_parcelas, dia_venc }) {
   const valor = Number(valor_total);
@@ -313,6 +317,11 @@ export function gerarParcelas({ forma_pgto, valor_total, data_venda, n_parcelas,
     d.setMonth(d.getMonth() + m);
     return d;
   };
+  const addDays = (date, days) => {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    return d;
+  };
   const fmtDate = (d) => {
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -320,8 +329,12 @@ export function gerarParcelas({ forma_pgto, valor_total, data_venda, n_parcelas,
     return `${yyyy}-${mm}-${dd}`;
   };
 
-  if (['pix', 'credito1x', 'dinheiro'].includes(forma_pgto)) {
+  if (['pix', 'dinheiro'].includes(forma_pgto)) {
     return [{ numero: 1, valor, vencimento: fmtDate(dv) }];
+  }
+
+  if (forma_pgto === 'credito1x') {
+    return [{ numero: 1, valor, vencimento: fmtDate(addDays(dv, 32)) }];
   }
 
   if (forma_pgto === 'parcelado') {
@@ -330,7 +343,7 @@ export function gerarParcelas({ forma_pgto, valor_total, data_venda, n_parcelas,
     const out = [];
     for (let i = 0; i < n; i++) {
       const v = i === n - 1 ? Number((valor - base * (n - 1)).toFixed(2)) : base;
-      out.push({ numero: i + 1, valor: v, vencimento: fmtDate(addMonths(dv, i)) });
+      out.push({ numero: i + 1, valor: v, vencimento: fmtDate(addDays(addMonths(dv, i), 32)) });
     }
     return out;
   }

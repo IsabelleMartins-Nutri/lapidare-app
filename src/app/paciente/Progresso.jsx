@@ -23,11 +23,14 @@ async function _signedUrl(path) {
 }
 
 const METRICAS = [
-  { key: 'kg',          label: 'Peso',       unit: 'kg', dec: 1 },
-  { key: 'cintura_cm',  label: 'Cintura',    unit: 'cm', dec: 1 },
-  { key: 'quadril_cm',  label: 'Quadril',    unit: 'cm', dec: 1 },
-  { key: 'pgc',         label: '% gordura',  unit: '%',  dec: 1 },
-  { key: 'mm_kg',       label: 'Massa magra', unit: 'kg', dec: 1 },
+  { key: 'kg',               label: 'Peso',             unit: 'kg', dec: 1 },
+  { key: 'cintura_cm',       label: 'Cintura',          unit: 'cm', dec: 1 },
+  { key: 'quadril_cm',       label: 'Quadril',          unit: 'cm', dec: 1 },
+  { key: 'pgc',              label: '% gordura',        unit: '%',  dec: 1 },
+  { key: 'mm_kg',            label: 'Massa magra',      unit: 'kg', dec: 1 },
+  { key: 'agua_corporal',    label: 'Água corporal',    unit: '%',  dec: 1 },
+  { key: 'gordura_visceral', label: 'Gordura visceral', unit: '',   dec: 1 },
+  { key: 'tmb',              label: 'TMB',              unit: 'kcal', dec: 0 },
 ];
 
 export default function Progresso() {
@@ -41,7 +44,7 @@ export default function Progresso() {
       if (!user) return;
       const { data } = await supabase
         .from('peso_registros')
-        .select('id, data, kg, altura_cm, cintura_cm, quadril_cm, braco_cm, coxa_cm, pgc, mm_kg, obs, pdf_url')
+        .select('id, data, kg, altura_cm, cintura_cm, quadril_cm, braco_cm, coxa_cm, pgc, mm_kg, agua_corporal, gordura_visceral, tmb, obs, pdf_url')
         .eq('paciente_id', user.id)
         .order('data', { ascending: true });
       if (!active) return;

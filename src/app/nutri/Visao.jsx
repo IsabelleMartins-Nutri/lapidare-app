@@ -69,7 +69,7 @@ export default function Visao() {
           .gte('data_hora', isoSegunda).lte('data_hora', isoDomingo)
           .order('data_hora'),
         // parcelas vencendo na semana (pendentes ou atrasadas)
-        supabase.from('parcelas').select('id, valor, vencimento, status, venda:vendas(servico, paciente:pacientes(id, nome))')
+        supabase.from('parcelas').select('id, valor, vencimento, status, venda:vendas(servico, paciente_nome_manual, paciente:pacientes(id, nome))')
           .eq('nutri_id', user.id).neq('status', 'pago')
           .lte('vencimento', dataDomingo)
           .order('vencimento'),
@@ -395,7 +395,7 @@ export default function Visao() {
             ? 'Sem cobranças pendentes'
             : `${brl(totalParcelas)} a receber${atrasadas > 0 ? ` · ${atrasadas} em atraso` : ''}`}
           itens={parcelasSemana.slice(0, 3).map(p => ({
-            label: p.venda?.paciente?.nome ?? 'Avulso',
+            label: p.venda?.paciente?.nome ?? p.venda?.paciente_nome_manual ?? 'Avulso',
             sub: `${brl(p.valor)} · venc. ${dataBR(p.vencimento)}${statusParcela(p) === 'atrasado' ? ' ⚠️' : ''}`,
           }))}
           onClick={() => navigate('/nutri/financeiro')}

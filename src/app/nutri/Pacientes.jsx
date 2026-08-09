@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase.js';
 import { useSession } from '../../lib/session.jsx';
 import { dataBR, iniciais } from '../../lib/utils.js';
+import { criarProntuarioSilencioso } from '../../lib/prontuario.js';
 import ImportarCsv from './_ImportarCsv.jsx';
 
 export default function Pacientes() {
@@ -13,6 +14,7 @@ export default function Pacientes() {
   const [busca, setBusca] = useState('');
   const [importerOpen, setImporterOpen] = useState(false);
   const [showPendentes, setShowPendentes] = useState(false);
+  const [criandoProntuario, setCriandoProntuario] = useState(null);
 
   async function carregar() {
     const [pacRes, pendRes] = await Promise.all([
@@ -48,6 +50,25 @@ export default function Pacientes() {
     if (!window.confirm(`Remover "${p.nome}" da lista de pendentes?`)) return;
     await supabase.from('pacientes_pendentes').delete().eq('id', p.id);
     carregar();
+  }
+
+  async function criarProntuario(p) {
+    const ok = window.confirm(
+      `Criar o prontuário completo de "${p.nome}" agora?\n\n` +
+      `Isso NÃO envia nenhum convite, email ou link pra ela — só te dá acesso ` +
+      `imediato ao Plano, Exames, Avaliação e Atendimento, como qualquer outra paciente. ` +
+      `Se um dia você quiser liberar o app pra ela, use "Enviar redefinição de senha" no perfil dela.`
+    );
+    if (!ok) return;
+    setCriandoProntuario(p.id);
+    try {
+      const id = await criarProntuarioSilencioso(p);
+      navigate(`/nutri/pacientes/${id}`);
+    } catch (e) {
+      alert('Erro: ' + e.message);
+    } finally {
+      setCriandoProntuario(null);
+    }
   }
 
   const filtradas = useMemo(() => {
@@ -125,6 +146,12 @@ export default function Pacientes() {
                     <div style={{ display: 'inline-flex', gap: 6 }}>
                       <button className="btn" style={{ fontSize: 10, padding: '4px 10px' }} onClick={() => copiarLinkSignup(p)}>
                         <i className="ti ti-link" aria-hidden="true"></i> Copiar link
+                      </button>
+                      <button className="btn-outline" style={{ fontSize: 10, padding: '4px 10px' }}
+                        disabled={criandoProntuario === p.id}
+                        title="Cria o prontuário completo agora, sem enviar nenhum convite pra ela"
+                        onClick={() => criarProntuario(p)}>
+                        <i className="ti ti-folder-plus" aria-hidden="true"></i> {criandoProntuario === p.id ? 'Criando...' : 'Criar prontuário'}
                       </button>
                       <button onClick={() => removerPendente(p)}
                         style={{

@@ -29,7 +29,7 @@ export default function Financeiro() {
 
   async function excluirVenda(venda) {
     const ok = window.confirm(
-      `Excluir a venda "${venda.servico}" de ${venda.paciente?.nome ?? 'Avulso'}?\n\n` +
+      `Excluir a venda "${venda.servico}" de ${venda.paciente?.nome ?? venda.paciente_nome_manual ?? 'Avulso'}?\n\n` +
       `Todas as parcelas relacionadas também serão removidas. Essa ação não pode ser desfeita.`
     );
     if (!ok) return;
@@ -45,7 +45,7 @@ export default function Financeiro() {
     if (!user) return;
     const [vRes, pRes, pacRes, sRes] = await Promise.all([
       supabase.from('vendas')
-        .select('id, paciente_id, servico_id, servico, valor_total, forma_pgto, data_venda, obs, paciente:pacientes(id, nome)')
+        .select('id, paciente_id, paciente_nome_manual, servico_id, servico, valor_total, forma_pgto, data_venda, obs, paciente:pacientes(id, nome)')
         .eq('nutri_id', user.id)
         .order('data_venda', { ascending: false }),
       supabase.from('parcelas')
@@ -259,7 +259,7 @@ export default function Financeiro() {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 500 }}>
-                    {v.paciente?.nome ?? 'Avulso'} · {v.servico}
+                    {v.paciente?.nome ?? v.paciente_nome_manual ?? 'Avulso'} · {v.servico}
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
                     {dataBR(v.data_venda)} · {labelFormaPgto(v.forma_pgto)} · {ps.length} parcela{ps.length === 1 ? '' : 's'}
@@ -398,6 +398,7 @@ export default function Financeiro() {
 function NovaVendaModal({ pacientes, servicos, nutriId, onClose, onSaved }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [pacienteId, setPacienteId] = useState('');
+  const [pacienteNomeManual, setPacienteNomeManual] = useState('');
   const [servicoId, setServicoId] = useState('');  // '' = manual/custom
   const [servico, setServico] = useState('');
   const [valor, setValor] = useState('');
@@ -451,6 +452,7 @@ function NovaVendaModal({ pacientes, servicos, nutriId, onClose, onSaved }) {
       .insert({
         nutri_id: nutriId,
         paciente_id: pacienteId || null,
+        paciente_nome_manual: pacienteId ? null : (pacienteNomeManual.trim() || null),
         servico_id: servicoId || null,
         servico: servico.trim(),
         valor_total: valorNum,
@@ -489,6 +491,15 @@ function NovaVendaModal({ pacientes, servicos, nutriId, onClose, onSaved }) {
         <option value="">— Avulso / não atribuir —</option>
         {pacientes.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
       </select>
+      {!pacienteId && (
+        <input
+          type="text"
+          value={pacienteNomeManual}
+          onChange={e => setPacienteNomeManual(e.target.value)}
+          placeholder="Ou digite o nome (paciente ainda não cadastrada no sistema)"
+          style={{ marginTop: 6 }}
+        />
+      )}
 
       <label className="form-lbl">Serviço</label>
       {servicos.length > 0 ? (
@@ -654,7 +665,7 @@ function EditarParcelaModal({ parcela, venda, onClose, onSaved }) {
   return (
     <ModalShell
       title="Editar parcela"
-      subtitle={`Parcela ${parcela.numero} · ${venda.paciente?.nome ?? 'Avulso'} · ${venda.servico}`}
+      subtitle={`Parcela ${parcela.numero} · ${venda.paciente?.nome ?? venda.paciente_nome_manual ?? 'Avulso'} · ${venda.servico}`}
       onClose={onClose}>
       <label className="form-lbl">Status</label>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: 10 }}>
@@ -731,6 +742,7 @@ function EditarParcelaModal({ parcela, venda, onClose, onSaved }) {
    ============================================================ */
 function EditarVendaModal({ venda, pacientes, onClose, onSaved }) {
   const [pacienteId, setPacienteId] = useState(venda.paciente_id ?? '');
+  const [pacienteNomeManual, setPacienteNomeManual] = useState(venda.paciente_nome_manual ?? '');
   const [servico, setServico] = useState(venda.servico ?? '');
   const [data, setData] = useState(venda.data_venda ?? '');
   const [obs, setObs] = useState(venda.obs ?? '');
@@ -747,6 +759,7 @@ function EditarVendaModal({ venda, pacientes, onClose, onSaved }) {
       .from('vendas')
       .update({
         paciente_id: pacienteId || null,
+        paciente_nome_manual: pacienteId ? null : (pacienteNomeManual.trim() || null),
         servico: servico.trim(),
         data_venda: data,
         obs: obs.trim() || null,
@@ -764,6 +777,15 @@ function EditarVendaModal({ venda, pacientes, onClose, onSaved }) {
         <option value="">— Avulso / não atribuir —</option>
         {pacientes.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
       </select>
+      {!pacienteId && (
+        <input
+          type="text"
+          value={pacienteNomeManual}
+          onChange={e => setPacienteNomeManual(e.target.value)}
+          placeholder="Ou digite o nome (paciente ainda não cadastrada no sistema)"
+          style={{ marginTop: 6 }}
+        />
+      )}
 
       <label className="form-lbl">Serviço</label>
       <input value={servico} onChange={e => setServico(e.target.value)}

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase.js';
 import { dataBR } from '../../lib/utils.js';
-import { ANAMNESE_LAPIDARE, QFA_LAPIDARE, RECORDATORIO_LAPIDARE, formatarRespostaAnamnese } from '../../lib/anamneseDefault.js';
+import { ANAMNESE_LAPIDARE, QFA_LAPIDARE, RECORDATORIO_LAPIDARE, formatarRespostaAnamnese, achatarEstrutura } from '../../lib/anamneseDefault.js';
+import { formatarResposta } from '../../lib/checkinDefault.js';
 import DicaJSON from '../../components/DicaJSON.jsx';
 
 export default function Anamnese({ pacienteId, nutriId, pacienteNome }) {
@@ -10,20 +11,43 @@ export default function Anamnese({ pacienteId, nutriId, pacienteNome }) {
   const [editar, setEditar] = useState(null);
   const [verResposta, setVerResposta] = useState(null);
   const [criarModelo, setCriarModelo] = useState(null);  // { modo: 'novo' | template }
+  const [enviosQFA, setEnviosQFA] = useState([]);
+  const [enviandoQFA, setEnviandoQFA] = useState(false);
+  const [expandidoEnvio, setExpandidoEnvio] = useState(null);
 
   async function carregar() {
-    const [aRes, tRes] = await Promise.all([
+    const [aRes, tRes, eRes] = await Promise.all([
       supabase.from('anamneses').select('*')
         .eq('paciente_id', pacienteId)
         .order('data', { ascending: false })
         .order('created_at', { ascending: false }),
       supabase.from('anamnese_templates').select('*')
         .eq('nutri_id', nutriId).order('created_at'),
+      supabase.from('checkin_envios')
+        .select('id, nome, perguntas, respostas, enviado_em, respondido_em')
+        .eq('paciente_id', pacienteId).eq('tipo', 'atendimento')
+        .order('enviado_em', { ascending: false }),
     ]);
     setAnamneses(aRes.data ?? []);
     setTemplates(tRes.data ?? []);
+    setEnviosQFA(eRes.data ?? []);
   }
   useEffect(() => { carregar(); }, [pacienteId, nutriId]);
+
+  async function enviarQFAPorLink() {
+    setEnviandoQFA(true);
+    const { error } = await supabase.from('checkin_envios').insert({
+      nutri_id: nutriId,
+      paciente_id: pacienteId,
+      nome: QFA_LAPIDARE.nome,
+      tipo: 'atendimento',
+      perguntas: achatarEstrutura(QFA_LAPIDARE.estrutura),
+    });
+    setEnviandoQFA(false);
+    if (error) return alert('Erro ao enviar: ' + error.message);
+    alert(`"${QFA_LAPIDARE.nome}" enviado! Já aparece no app de ${pacienteNome?.split(' ')[0] ?? 'paciente'}.`);
+    carregar();
+  }
 
   async function excluir(a) {
     if (!window.confirm(`Excluir atendimento "${a.titulo}"?`)) return;
@@ -110,6 +134,10 @@ export default function Anamnese({ pacienteId, nutriId, pacienteNome }) {
               <button className="btn" onClick={novaDoQFA}>
                 <i className="ti ti-list-check" aria-hidden="true"></i> QFA — Freq. Alimentar
               </button>
+              <button className="btn-outline" onClick={enviarQFAPorLink} disabled={enviandoQFA}
+                title="Envia o QFA pra paciente preencher sozinha, sem misturar com o check-in semanal">
+                <i className="ti ti-send" aria-hidden="true"></i> {enviandoQFA ? 'Enviando...' : 'Enviar QFA por link'}
+              </button>
               <button className="btn" onClick={novaDoRecordatorio}>
                 <i className="ti ti-clock-hour-4" aria-hidden="true"></i> Recordatório 24h
               </button>
@@ -122,6 +150,47 @@ export default function Anamnese({ pacienteId, nutriId, pacienteNome }) {
               ))}
             </div>
           </div>
+
+          {/* QFA enviados por link */}
+          {enviosQFA.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{
+                fontSize: 10, letterSpacing: 1, textTransform: 'uppercase',
+                color: 'var(--text3)', fontWeight: 500, marginBottom: 6,
+              }}>
+                QFA enviados por link ({enviosQFA.length})
+              </div>
+              {enviosQFA.map(e => (
+                <div key={e.id} style={{
+                  padding: '8px 10px', borderRadius: 8, background: 'var(--bg2)',
+                  marginBottom: 6, fontSize: 12,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <span>
+                      {e.nome} · enviado em {dataBR(e.enviado_em)}
+                      {e.respondido_em && <span style={{ color: 'var(--green)' }}> · respondido em {dataBR(e.respondido_em)}</span>}
+                    </span>
+                    {e.respondido_em && (
+                      <button className="btn-outline" style={{ fontSize: 11, padding: '3px 8px' }}
+                        onClick={() => setExpandidoEnvio(v => v === e.id ? null : e.id)}>
+                        {expandidoEnvio === e.id ? 'Ocultar' : 'Ver respostas'}
+                      </button>
+                    )}
+                  </div>
+                  {expandidoEnvio === e.id && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '0.5px solid var(--hair, #e3dcce)' }}>
+                      {(e.perguntas ?? []).map(p => (
+                        <div key={p.id} style={{ marginBottom: 6 }}>
+                          <div style={{ fontWeight: 500, color: 'var(--dark)' }}>{p.pergunta}</div>
+                          <div style={{ color: 'var(--text2)' }}>{formatarResposta(p, e.respostas?.[p.id])}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Gerenciar modelos próprios */}
           <div style={{

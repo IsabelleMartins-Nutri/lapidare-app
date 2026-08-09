@@ -1,0 +1,21 @@
+-- ════════════════════════════════════════════════════════════════════
+-- LAPIDARE · UPDATE v1.21.0 · NOME MANUAL EM VENDA + PRAZO DE 32 DIAS NO CARTÃO
+-- ════════════════════════════════════════════════════════════════════
+-- O que faz:
+--   - Adiciona coluna "paciente_nome_manual" em vendas, pra registrar
+--     venda de alguém que ainda não foi cadastrada como paciente no
+--     sistema (digita o nome à mão em vez de escolher da lista).
+--   - A regra dos 32 dias pro cartão (crédito 1x e parcelado) é só
+--     código (não precisa de SQL) — já está no app assim que você
+--     atualizar e publicar.
+--   - Nenhuma alteração de RLS necessária.
+--
+-- Como rodar (30 seg):
+--   1. Supabase → SQL Editor → + New query
+--   2. Cola TUDO → Run
+--   3. Esperado: "Success. No rows returned"
+--
+-- 100% seguro: idempotente.
+-- ════════════════════════════════════════════════════════════════════
+
+alter table public.vendas add column if not exists paciente_nome_manual text;

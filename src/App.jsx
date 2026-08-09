@@ -10,6 +10,7 @@ import TermoConsentimento from './components/TermoConsentimento.jsx';
 import Login from './app/auth/Login.jsx';
 import Callback from './app/auth/Callback.jsx';
 import SignupPaciente from './app/auth/SignupPaciente.jsx';
+import PreConsultaIntake from './app/auth/PreConsultaIntake.jsx';
 import RedefinirSenha from './app/auth/RedefinirSenha.jsx';
 
 import Visao from './app/nutri/Visao.jsx';
@@ -23,6 +24,7 @@ import Checkins from './app/nutri/Checkins.jsx';
 import Cadastrar from './app/nutri/Cadastrar.jsx';
 import Cerebro from './app/nutri/Cerebro.jsx';
 import Servicos from './app/nutri/Servicos.jsx';
+import MeusAlimentos from './app/nutri/MeusAlimentos.jsx';
 import Previsibilidade from './app/nutri/Previsibilidade.jsx';
 import Financeiro from './app/nutri/Financeiro.jsx';
 import Biblioteca from './app/nutri/Biblioteca.jsx';
@@ -51,6 +53,7 @@ export default function App() {
           <Route path="/auth/callback" element={<Callback />} />
           <Route path="/signup-paciente/:nutriId" element={<SignupPaciente />} />
           <Route path="/signup-paciente/:nutriId/:token" element={<SignupPaciente />} />
+          <Route path="/pre-consulta/:nutriId/:tipo" element={<PreConsultaIntake />} />
           <Route path="/redefinir-senha" element={<RedefinirSenha />} />
 
           {/* Painel da Nutri */}
@@ -69,6 +72,7 @@ export default function App() {
             <Route path="/nutri/cadastrar" element={<Cadastrar />} />
             <Route path="/nutri/cerebro" element={<Cerebro />} />
             <Route path="/nutri/servicos" element={<Servicos />} />
+            <Route path="/nutri/alimentos" element={<MeusAlimentos />} />
             <Route path="/nutri/previsibilidade" element={<Previsibilidade />} />
             <Route path="/nutri/financeiro" element={<Financeiro />} />
             <Route path="/nutri/biblioteca" element={<Biblioteca />} />

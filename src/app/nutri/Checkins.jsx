@@ -35,15 +35,20 @@ export default function Checkins() {
     if (!user) return;
     const [pacRes, envRes, tplRes, agRes] = await Promise.all([
       supabase.from('pacientes').select('id, nome').eq('nutri_id', user.id).order('nome'),
+      // .neq('tipo','atendimento') exclui os QFA enviados pela aba Atendimento
+      // (PacientePerfil → Atendimento) — esses ficam só lá, não aparecem
+      // misturados com os check-ins semanais/pré-consulta aqui.
       supabase.from('checkin_envios')
         .select('id, paciente_id, perguntas, enviado_em, respondido_em, respostas, lembrete_enviado_em, paciente:pacientes(id, nome)')
         .eq('nutri_id', user.id)
+        .neq('tipo', 'atendimento')
         .order('enviado_em', { ascending: false }),
       // Lista TODOS os templates (recorrente E pre_consulta) — na v1.13 unificamos
       // as 2 telas em "Questionários". O filtro antigo por tipo escondia os de
       // pré-consulta pra sempre. Bug reportado pela Taiane que tinha template
       // "Questionário Pré-Consulta - Saúde da Mulher" invisível na UI.
       supabase.from('checkin_templates').select('*').eq('nutri_id', user.id)
+        .neq('tipo', 'atendimento')
         .order('created_at'),
       supabase.from('checkin_agendamentos')
         // `tipo` é necessário — sem ele, `ag.template?.tipo` fica undefined

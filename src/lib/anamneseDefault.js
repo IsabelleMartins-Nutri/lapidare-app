@@ -274,6 +274,21 @@ export const RECORDATORIO_LAPIDARE = {
 
 
 /**
+ * Achata { secoes: [{ titulo, perguntas: [...] }] } (formato da anamnese)
+ * pro formato flat que CheckinForm/checkin_envios espera (cada pergunta
+ * carrega seu próprio "secao"). Usado tanto pra enviar o QFA pra uma
+ * paciente já cadastrada (checkin_envios) quanto pro link público de
+ * pré-consulta (antes de qualquer cadastro).
+ */
+export function achatarEstrutura(estrutura) {
+  const out = [];
+  (estrutura?.secoes ?? []).forEach(s => {
+    (s.perguntas ?? []).forEach(p => out.push({ ...p, secao: s.titulo }));
+  });
+  return out;
+}
+
+/**
  * Formata uma resposta pra exibição (HTML/texto)
  */
 export function formatarRespostaAnamnese(pergunta, valor) {

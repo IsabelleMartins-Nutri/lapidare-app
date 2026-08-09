@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase.js';
 import { useSession } from '../../lib/session.jsx';
 import { dataBR } from '../../lib/utils.js';
+import { validarTemplate, formatarResposta } from '../../lib/checkinDefault.js';
+import { criarProntuarioSilencioso } from '../../lib/prontuario.js';
+import CheckinForm from '../../components/CheckinForm.jsx';
+import DicaJSON from '../../components/DicaJSON.jsx';
 
 // Listas padrão usadas como fallback se a nutri não customizou ainda.
 // As listas CUSTOMIZADAS ficam em nutris.{objetivos,tipos_plano,modalidades}
@@ -15,8 +20,10 @@ const SEXOS = [
 ];
 
 export default function Cadastrar() {
+  const navigate = useNavigate();
   const { user, profile } = useSession();
   const [servicosAtivos, setServicosAtivos] = useState([]);
+  const [criandoProntuario, setCriandoProntuario] = useState(null); // id do pendente em processamento
 
   // Listas customizadas pela nutri (caem pro default se não tiver lista
   // configurada ainda, ou se o Supabase dela não foi atualizado).
@@ -49,6 +56,41 @@ export default function Cadastrar() {
   const [erro, setErro] = useState(null);
   const [sucesso, setSucesso] = useState(null);   // pendente criado (objeto)
   const [pendentes, setPendentes] = useState([]);
+  const [intakePerguntas, setIntakePerguntas] = useState(null);
+  const [editorIntakeAberto, setEditorIntakeAberto] = useState(false);
+  const [expandidosIntake, setExpandidosIntake] = useState({});
+  const [caixaEntrada, setCaixaEntrada] = useState([]);
+
+  async function carregarIntake() {
+    if (!user) return;
+    const { data } = await supabase.from('nutris').select('intake_perguntas').eq('id', user.id).maybeSingle();
+    setIntakePerguntas(data?.intake_perguntas ?? null);
+  }
+  useEffect(() => { carregarIntake(); }, [user]);
+
+  async function carregarCaixaEntrada() {
+    if (!user) return;
+    const { data } = await supabase
+      .from('pre_consulta_respostas')
+      .select('id, tipo, nome, email, perguntas, respostas, created_at')
+      .eq('nutri_id', user.id)
+      .eq('cadastrada', false)
+      .order('created_at', { ascending: false });
+    setCaixaEntrada(data ?? []);
+  }
+  useEffect(() => { carregarCaixaEntrada(); }, [user]);
+
+  function usarDadosDaSubmissao(s) {
+    setNome(s.nome ?? '');
+    setEmail(s.email ?? '');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function marcarComoCadastrada(s) {
+    if (!window.confirm(`Marcar como já cadastrada? Some da caixa de entrada.`)) return;
+    await supabase.from('pre_consulta_respostas').update({ cadastrada: true }).eq('id', s.id);
+    carregarCaixaEntrada();
+  }
 
   async function carregarPendentes() {
     if (!user) return;
@@ -166,6 +208,19 @@ export default function Cadastrar() {
     return `${window.location.origin}/signup-paciente/${user.id}/${pendente.token}`;
   }
 
+  function linkPreConsultaFixo(nutriId, tipo) {
+    return `${window.location.origin}/pre-consulta/${nutriId}/${tipo}`;
+  }
+
+  async function copiarLinkFixo(tipo) {
+    try {
+      await navigator.clipboard.writeText(linkPreConsultaFixo(user.id, tipo));
+      alert('Link copiado! Use sempre o mesmo pra qualquer paciente.');
+    } catch {
+      prompt('Copie o link abaixo:', linkPreConsultaFixo(user.id, tipo));
+    }
+  }
+
   function mensagemWhats(pendente) {
     const link = linkDe(pendente);
     const primeiroNome = pendente.nome.split(' ')[0];
@@ -189,10 +244,123 @@ export default function Cadastrar() {
     carregarPendentes();
   }
 
+  async function criarProntuario(pendente) {
+    const ok = window.confirm(
+      `Criar o prontuário completo de "${pendente.nome}" agora?\n\n` +
+      `Isso NÃO envia nenhum convite, email ou link pra ela — só te dá acesso ` +
+      `imediato ao Plano, Exames, Avaliação e Atendimento, como qualquer outra paciente. ` +
+      `Se um dia você quiser liberar o app pra ela, use "Enviar redefinição de senha" no perfil dela.`
+    );
+    if (!ok) return;
+    setCriandoProntuario(pendente.id);
+    try {
+      const id = await criarProntuarioSilencioso(pendente);
+      navigate(`/nutri/pacientes/${id}`);
+    } catch (e) {
+      alert('Erro: ' + e.message);
+    } finally {
+      setCriandoProntuario(null);
+    }
+  }
+
   return (
     <>
       <div className="page-title">Cadastrar paciente</div>
       <div className="page-sub">Preencha os dados da paciente — ela recebe um link pra criar só a senha</div>
+
+      <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>Links de pré-consulta</div>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+              Links fixos — sempre os mesmos, use pra qualquer pessoa. Ela preenche o próprio nome/email e as respostas caem na caixa de entrada aqui embaixo, antes de qualquer cadastro.
+            </div>
+          </div>
+          <button className="btn-outline" onClick={() => setEditorIntakeAberto(true)}>
+            <i className="ti ti-edit" aria-hidden="true"></i> {intakePerguntas?.length ? 'Editar perguntas (geral)' : 'Configurar perguntas (geral)'}
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>Questionário geral</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{
+                flex: 1, padding: '6px 8px', background: 'var(--bg2)', borderRadius: 6,
+                fontSize: 10, fontFamily: 'monospace', color: 'var(--text2)',
+                wordBreak: 'break-all', userSelect: 'all', cursor: 'text',
+              }}>{linkPreConsultaFixo(user?.id, 'geral')}</div>
+              <button className="btn-outline" onClick={() => copiarLinkFixo('geral')} style={{ fontSize: 11, padding: '4px 8px', flexShrink: 0 }}>
+                <i className="ti ti-copy" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+          <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 4 }}>QFA — frequência alimentar</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{
+                flex: 1, padding: '6px 8px', background: 'var(--bg2)', borderRadius: 6,
+                fontSize: 10, fontFamily: 'monospace', color: 'var(--text2)',
+                wordBreak: 'break-all', userSelect: 'all', cursor: 'text',
+              }}>{linkPreConsultaFixo(user?.id, 'qfa')}</div>
+              <button className="btn-outline" onClick={() => copiarLinkFixo('qfa')} style={{ fontSize: 11, padding: '4px 8px', flexShrink: 0 }}>
+                <i className="ti ti-copy" aria-hidden="true"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {caixaEntrada.length > 0 && (
+        <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 10 }}>
+            Caixa de entrada — pré-consulta ({caixaEntrada.length})
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {caixaEntrada.map(s => (
+              <div key={s.id} style={{ padding: 10, background: 'var(--bg2)', borderRadius: 8, fontSize: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <div>
+                    <strong>{s.nome || 'Sem nome'}</strong> · {s.email || 'sem email'}
+                    <span style={{
+                      marginLeft: 8, fontSize: 10, padding: '2px 6px', borderRadius: 999,
+                      background: s.tipo === 'qfa' ? 'var(--blue-bg, #d4e8f5)' : 'var(--gold-soft)',
+                      color: s.tipo === 'qfa' ? 'var(--blue, #1a5a8c)' : 'var(--gold-deep)',
+                    }}>
+                      {s.tipo === 'qfa' ? 'QFA' : 'Geral'}
+                    </span>
+                    <div style={{ color: 'var(--text3)', fontSize: 11, marginTop: 2 }}>{dataBR(s.created_at)}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn-outline" style={{ fontSize: 11, padding: '4px 8px' }}
+                      onClick={() => setExpandidosIntake(v => ({ ...v, [s.id]: !v[s.id] }))}>
+                      {expandidosIntake[s.id] ? 'Ocultar' : 'Ver respostas'}
+                    </button>
+                    <button className="btn-outline" style={{ fontSize: 11, padding: '4px 8px' }}
+                      onClick={() => usarDadosDaSubmissao(s)}>
+                      Usar nome/email
+                    </button>
+                    <button className="btn-outline" style={{ fontSize: 11, padding: '4px 8px', color: 'var(--green)', borderColor: 'var(--green)' }}
+                      onClick={() => marcarComoCadastrada(s)}>
+                      <i className="ti ti-check" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                </div>
+                {expandidosIntake[s.id] && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '0.5px solid var(--hair, #e3dcce)' }}>
+                    {(s.perguntas ?? []).map(p => (
+                      <div key={p.id} style={{ marginBottom: 6 }}>
+                        <div style={{ fontWeight: 500, color: 'var(--dark)' }}>{p.pergunta}</div>
+                        <div style={{ color: 'var(--text2)' }}>{formatarResposta(p, s.respostas?.[p.id])}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16 }}>
 
@@ -303,7 +471,7 @@ export default function Cadastrar() {
                     fontSize: 10, fontFamily: 'monospace', color: 'var(--text2)',
                     wordBreak: 'break-all', userSelect: 'all', cursor: 'text',
                   }}>{linkDe(p)}</div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                     <button className="btn-outline" onClick={() => copiarLink(p)}
                       style={{ fontSize: 11, padding: '4px 10px' }}>
                       <i className="ti ti-copy" aria-hidden="true"></i> Copiar link
@@ -319,6 +487,13 @@ export default function Cadastrar() {
                       style={{ fontSize: 11, padding: '4px 10px', textDecoration: 'none' }}>
                       <i className="ti ti-brand-whatsapp" aria-hidden="true"></i> WhatsApp
                     </a>
+                    <button className="btn-outline" onClick={() => criarProntuario(p)}
+                      disabled={criandoProntuario === p.id}
+                      title="Cria o prontuário completo agora, sem enviar nenhum convite pra ela"
+                      style={{ fontSize: 11, padding: '4px 10px' }}>
+                      <i className="ti ti-folder-plus" aria-hidden="true"></i>
+                      {criandoProntuario === p.id ? ' Criando...' : ' Criar prontuário'}
+                    </button>
                     <button onClick={() => excluirPendente(p)}
                       style={{
                         background: 'none', border: '0.5px solid var(--red)',
@@ -334,6 +509,15 @@ export default function Cadastrar() {
           )}
         </div>
       </div>
+
+      {editorIntakeAberto && (
+        <IntakeEditorModal
+          nutriId={user.id}
+          perguntas={intakePerguntas}
+          onClose={() => setEditorIntakeAberto(false)}
+          onSaved={() => { setEditorIntakeAberto(false); carregarIntake(); }}
+        />
+      )}
     </>
   );
 }
@@ -386,6 +570,115 @@ function CartaoSucesso({ pendente, link, mensagemWhats, onCopiar, onDispensar })
   );
 }
 
+
+const INTAKE_EXEMPLO = [
+  { id: 'objetivo_livre', secao: 'Sobre você', tipo: 'texto', pergunta: 'O que te trouxe até aqui? Conte um pouco do que você espera do acompanhamento.', placeholder: 'Escreva livremente...', rows: 4 },
+  { id: 'historico_saude', secao: 'Sobre você', tipo: 'texto', pergunta: 'Tem algum diagnóstico, condição de saúde ou medicação em uso que eu deva saber?', placeholder: 'Ex: hipotireoidismo, uso de GLP-1...', rows: 3 },
+  { id: 'refeicoes_hoje', secao: 'Rotina alimentar atual', tipo: 'texto', pergunta: 'Descreva o que você costuma comer num dia normal (café, almoço, lanche, jantar).', placeholder: 'Café da manhã: ...\nAlmoço: ...', rows: 5 },
+];
+
+function IntakeEditorModal({ nutriId, perguntas, onClose, onSaved }) {
+  const [jsonText, setJsonText] = useState(
+    JSON.stringify(perguntas?.length ? perguntas : INTAKE_EXEMPLO, null, 2)
+  );
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [erro, setErro] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const perguntasParsed = useMemo(() => {
+    try {
+      const arr = JSON.parse(jsonText);
+      const v = validarTemplate({ nome: 'Pré-consulta', perguntas: arr });
+      if (!v.ok) return null;
+      return arr;
+    } catch { return null; }
+  }, [jsonText]);
+
+  async function salvar() {
+    setErro(null);
+    let arr;
+    try { arr = JSON.parse(jsonText); } catch (e) { return setErro('JSON inválido: ' + e.message); }
+    const v = validarTemplate({ nome: 'Pré-consulta', perguntas: arr });
+    if (!v.ok) return setErro(v.erro);
+
+    setBusy(true);
+    const { error } = await supabase.from('nutris').update({ intake_perguntas: arr }).eq('id', nutriId);
+    setBusy(false);
+    if (error) return setErro(error.message);
+    onSaved();
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(28,23,18,.55)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110,
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: 'var(--white)', borderRadius: 12, padding: 22,
+        width: 620, maxWidth: '92vw', maxHeight: '92vh', overflowY: 'auto',
+        border: '0.5px solid var(--border)',
+      }}>
+        <div style={{ fontFamily: 'var(--font-serif)', fontSize: 18, marginBottom: 4 }}>Questionário de pré-consulta</div>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>
+          Essas são as perguntas que a futura paciente responde antes de você fazer o cadastro dela — edite quantas vezes quiser.
+        </div>
+
+        <label className="form-lbl" style={{ marginTop: 0 }}>Perguntas (JSON)</label>
+        <textarea rows={16} value={jsonText} onChange={e => setJsonText(e.target.value)}
+          placeholder='[{ "id": "...", "secao": "...", "tipo": "...", "pergunta": "..." }]'
+          style={{ fontFamily: 'monospace', fontSize: 13, resize: 'vertical' }} />
+
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6, lineHeight: 1.5 }}>
+          Cada pergunta precisa de: <code>id</code>, <code>secao</code>, <code>tipo</code>, <code>pergunta</code>.
+          Tipos válidos: emoji_scale, slider, single, multi, habitos, texto.
+        </div>
+        <DicaJSON
+          exemploPrompt='gera um JSON (array de perguntas) pra um questionário de pré-consulta de nutrição, que a paciente responde antes da primeira consulta: perguntas abertas sobre objetivo/histórico de saúde (texto), e um recordatório alimentar atual (texto, perguntando o que come em cada refeição do dia). Estrutura: [{ "id": "...", "secao": "...", "tipo": "texto", "pergunta": "...", "placeholder": "...", "rows": 4 }]' />
+
+        {erro && (
+          <div style={{
+            background: 'var(--red-bg)', color: 'var(--red)',
+            padding: '8px 12px', borderRadius: 6, fontSize: 13, marginTop: 10,
+          }}>{erro}</div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'space-between' }}>
+          <button className="btn-outline" onClick={() => setPreviewOpen(true)} disabled={!perguntasParsed}>
+            <i className="ti ti-eye" aria-hidden="true"></i> Preview
+          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-outline" onClick={onClose}>Cancelar</button>
+            <button className="btn" onClick={salvar} disabled={busy}>
+              <i className="ti ti-check" aria-hidden="true"></i> {busy ? '...' : 'Salvar'}
+            </button>
+          </div>
+        </div>
+
+        {previewOpen && perguntasParsed && (
+          <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(28,23,18,.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120,
+          }} onClick={() => setPreviewOpen(false)}>
+            <div onClick={e => e.stopPropagation()} style={{
+              background: 'var(--white)', borderRadius: 12, padding: 22,
+              width: 540, maxWidth: '92vw', maxHeight: '92vh', overflowY: 'auto',
+              border: '0.5px solid var(--border)',
+            }}>
+              <div style={{ fontFamily: 'var(--font-serif)', fontSize: 17, marginBottom: 4 }}>Preview</div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>É assim que a futura paciente vai ver, sem precisar fazer login.</div>
+              <div style={{ background: '#f7f3ee', borderRadius: 12, padding: '8px 0' }}>
+                <CheckinForm perguntas={perguntasParsed} valores={{}} onChange={() => {}} />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+                <button className="btn-outline" onClick={() => setPreviewOpen(false)}>Fechar</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function Field({ label, value, onChange, type = 'text', required, autoFocus }) {
   return (

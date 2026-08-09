@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import { supabase } from '../../lib/supabase.js';
@@ -8,7 +8,7 @@ import {
   validarPlano, validarLista, validarSubstituicoes, contarItensLista, normalizarPlano,
   omitColunasFaltantes,
 } from '../../lib/utils.js';
-import { TEMPLATE_PADRAO } from '../../lib/checkinDefault.js';
+import { TEMPLATE_PADRAO, formatarResposta } from '../../lib/checkinDefault.js';
 import CheckinForm from '../../components/CheckinForm.jsx';
 import Evolucao from './_Evolucao.jsx';
 import FollowUp from './_FollowUp.jsx';
@@ -16,6 +16,15 @@ import Suplementacao from './_Suplementacao.jsx';
 import Habitos from './_Habitos.jsx';
 import Anamnese from './_Anamnese.jsx';
 import DicaJSON from '../../components/DicaJSON.jsx';
+import PlanoView from '../../components/PlanoView.jsx';
+import PlanoEditor from '../../components/PlanoEditor.jsx';
+
+const CONDICAO_CATEGORIAS = [
+  { id: 'diagnostico', label: 'Diagnóstico',         pillClass: 'pill-b' },
+  { id: 'medicacao',   label: 'Medicação',            pillClass: 'pill-g' },
+  { id: 'alergia',     label: 'Alergia/Restrição',    pillClass: 'pill-r' },
+  { id: 'atencao',     label: 'Atenção',              pillClass: 'pill-a' },
+];
 
 export default function PacientePerfil() {
   const { id } = useParams();
@@ -27,6 +36,8 @@ export default function PacientePerfil() {
   const [novoNasc, setNovoNasc] = useState('');
   const [salvandoNasc, setSalvandoNasc] = useState(false);
   const [salvandoSexo, setSalvandoSexo] = useState(false);
+  const [salvandoCondicoes, setSalvandoCondicoes] = useState(false);
+  const [novaCondicaoTexto, setNovaCondicaoTexto] = useState(null);
 
   async function carregar() {
     const { data } = await supabase
@@ -100,6 +111,46 @@ export default function PacientePerfil() {
       }
       return;
     }
+    carregar();
+  }
+
+  function iniciarCondicao() {
+    const texto = window.prompt('Nova condição/flag (ex: Endometriose, GLP-1, Hipotireoidismo):');
+    const limpo = texto?.trim();
+    if (!limpo) return;
+    const atuais = paciente.condicoes ?? [];
+    if (atuais.some(c => c.texto.toLowerCase() === limpo.toLowerCase())) return;
+    setNovaCondicaoTexto(limpo);
+  }
+
+  async function confirmarCondicao(categoria) {
+    const atuais = paciente.condicoes ?? [];
+    setSalvandoCondicoes(true);
+    const { error } = await supabase.from('pacientes')
+      .update({ condicoes: [...atuais, { texto: novaCondicaoTexto, categoria }] }).eq('id', id);
+    setSalvandoCondicoes(false);
+    setNovaCondicaoTexto(null);
+    if (error) {
+      if (/condicoes.*schema cache|Could not find.*column/i.test(error.message)) {
+        alert(
+          'Seu Supabase ainda não foi atualizado — a coluna "condicoes" está desatualizada.\n\n' +
+          'Rode o SQL: supabase/delta-v1.20.0.sql'
+        );
+      } else {
+        alert('Erro ao salvar: ' + error.message);
+      }
+      return;
+    }
+    carregar();
+  }
+
+  async function removerCondicao(item) {
+    const atuais = paciente.condicoes ?? [];
+    setSalvandoCondicoes(true);
+    const { error } = await supabase.from('pacientes')
+      .update({ condicoes: atuais.filter(c => c.texto !== item.texto) }).eq('id', id);
+    setSalvandoCondicoes(false);
+    if (error) { alert('Erro: ' + error.message); return; }
     carregar();
   }
 
@@ -233,6 +284,57 @@ export default function PacientePerfil() {
         </div>
       </div>
 
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: novaCondicaoTexto ? 6 : 16 }}>
+        {(paciente.condicoes ?? []).map(c => {
+          const cat = CONDICAO_CATEGORIAS.find(k => k.id === c.categoria);
+          return (
+            <span key={c.texto} className={`pill ${cat?.pillClass ?? ''}`} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4, paddingRight: 4,
+            }}>
+              {c.texto}
+              <button onClick={() => removerCondicao(c)} disabled={salvandoCondicoes}
+                title="Remover"
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer', color: 'inherit',
+                  padding: 0, display: 'inline-flex', opacity: 0.7,
+                }}>
+                <i className="ti ti-x" style={{ fontSize: 11 }} aria-hidden="true"></i>
+              </button>
+            </span>
+          );
+        })}
+        {!novaCondicaoTexto && (
+          <button onClick={iniciarCondicao} disabled={salvandoCondicoes}
+            style={{
+              background: 'none', border: '0.5px dashed var(--border)', borderRadius: 20,
+              padding: '2px 10px', fontSize: 11, color: 'var(--text3)', cursor: 'pointer',
+              fontFamily: 'var(--font-sans)',
+            }}>
+            + Condição
+          </button>
+        )}
+      </div>
+
+      {novaCondicaoTexto && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 16, fontSize: 11 }}>
+          <span style={{ color: 'var(--text3)' }}>Categoria de "{novaCondicaoTexto}":</span>
+          {CONDICAO_CATEGORIAS.map(cat => (
+            <button key={cat.id} onClick={() => confirmarCondicao(cat.id)} disabled={salvandoCondicoes}
+              className={`pill ${cat.pillClass}`}
+              style={{ border: 'none', cursor: 'pointer' }}>
+              {cat.label}
+            </button>
+          ))}
+          <button onClick={() => setNovaCondicaoTexto(null)} disabled={salvandoCondicoes}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--text3)', fontFamily: 'var(--font-sans)',
+            }}>
+            cancelar
+          </button>
+        </div>
+      )}
+
       <div className="g3">
         <div className="stat">
           <div className="stat-lbl">Objetivo</div>
@@ -314,6 +416,119 @@ export default function PacientePerfil() {
    CHECK-IN — envio rápido + histórico desta paciente
    (gerenciamento de templates fica em /nutri/checkins)
    ============================================================ */
+function escapeHtmlCheckin(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Tabela evolutiva: uma linha por check-in respondido, uma coluna por
+ * pergunta. As colunas são montadas dinamicamente a partir do que foi
+ * de fato perguntado/respondido — não depende de nenhum template fixo,
+ * então continua funcionando mesmo se a nutri trocar o questionário.
+ */
+function TabelaEvolucaoCheckins({ envios, pacienteNome }) {
+  const respondidos = envios.filter(e => e.respondido_em);
+  if (respondidos.length === 0) return null;
+
+  // Monta {id -> label} a partir do mais antigo pro mais novo, pra
+  // usar sempre a versão mais recente do texto da pergunta no cabeçalho.
+  const colunas = new Map();
+  [...respondidos].reverse().forEach(e => {
+    (e.perguntas ?? []).forEach(p => colunas.set(p.id, p.pergunta || p.id));
+  });
+  const colunasList = [...colunas.entries()];
+
+  function imprimir() {
+    const linhasHtml = respondidos.map(e => {
+      const celulas = colunasList.map(([id]) => {
+        const pergunta = (e.perguntas ?? []).find(p => p.id === id);
+        const valor = pergunta ? formatarResposta(pergunta, e.respostas?.[id]) : '—';
+        return `<td style="padding:8px 10px; border-bottom:1px solid #e3dcce; font-size:12px;">${escapeHtmlCheckin(valor)}</td>`;
+      }).join('');
+      return `<tr><td style="padding:8px 10px; border-bottom:1px solid #e3dcce; font-size:12px; font-weight:600; white-space:nowrap;">${escapeHtmlCheckin(dataBR(e.respondido_em))}</td>${celulas}</tr>`;
+    }).join('');
+    const cabecalhoHtml = colunasList.map(([, label]) =>
+      `<th style="padding:8px 10px; border-bottom:2px solid #c9a96e; font-size:11px; text-align:left;">${escapeHtmlCheckin(label)}</th>`
+    ).join('');
+
+    const html = `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Evolução dos check-ins · ${escapeHtmlCheckin(pacienteNome)}</title>
+  <style>
+    @page { size: A4 landscape; margin: 12mm; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #2b2b2b; padding: 10px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .meta { font-size: 12px; color: #888; margin-bottom: 18px; }
+    table { border-collapse: collapse; width: 100%; }
+  </style>
+</head>
+<body>
+  <h1>Evolução dos check-ins</h1>
+  <div class="meta">Paciente: <strong>${escapeHtmlCheckin(pacienteNome)}</strong> · ${respondidos.length} check-ins respondidos</div>
+  <table>
+    <thead><tr><th style="padding:8px 10px; border-bottom:2px solid #c9a96e; font-size:11px; text-align:left;">Data</th>${cabecalhoHtml}</tr></thead>
+    <tbody>${linhasHtml}</tbody>
+  </table>
+  <script>window.onload = () => setTimeout(() => window.print(), 400);</script>
+</body>
+</html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { alert('Permita pop-ups pra gerar o PDF.'); return; }
+    win.document.write(html);
+    win.document.close();
+  }
+
+  return (
+    <>
+      <div className="section-label" style={{ marginTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>Evolução dos check-ins ({respondidos.length})</span>
+        <button className="btn-outline" style={{ fontSize: 12, padding: '4px 10px' }} onClick={imprimir}>
+          <i className="ti ti-printer" aria-hidden="true"></i> Imprimir / PDF
+        </button>
+      </div>
+      <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+        <table className="table">
+          <thead>
+            <tr>
+              <th style={{ whiteSpace: 'nowrap' }}>Data</th>
+              {colunasList.map(([id, label]) => (
+                <th key={id} title={label} style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {respondidos.map(e => (
+              <tr key={e.id}>
+                <td style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>{dataBR(e.respondido_em)}</td>
+                {colunasList.map(([id]) => {
+                  const pergunta = (e.perguntas ?? []).find(p => p.id === id);
+                  const valor = pergunta ? formatarResposta(pergunta, e.respostas?.[id]) : '—';
+                  return (
+                    <td key={id} title={valor} style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
+                      {valor}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 function CheckinPersonalizado({ pacienteId, nutriId, pacienteNome }) {
   const navigate = useNavigate();
   const [templates, setTemplates] = useState([]);
@@ -327,12 +542,14 @@ function CheckinPersonalizado({ pacienteId, nutriId, pacienteNome }) {
       supabase.from('checkin_templates').select('*')
         .eq('nutri_id', nutriId)
         .or(`paciente_id.is.null,paciente_id.eq.${pacienteId}`)
+        .neq('tipo', 'atendimento')
         .order('created_at'),
       supabase.from('checkin_envios')
         .select('id, enviado_em, respondido_em, lembrete_enviado_em, perguntas, respostas')
         .eq('paciente_id', pacienteId)
+        .neq('tipo', 'atendimento')
         .order('enviado_em', { ascending: false })
-        .limit(10),
+        .limit(26),
     ]);
     setTemplates(tplRes.data ?? []);
     setEnvios(envRes.data ?? []);
@@ -472,6 +689,8 @@ function CheckinPersonalizado({ pacienteId, nutriId, pacienteNome }) {
           })}
         </div>
       )}
+
+      <TabelaEvolucaoCheckins envios={envios} pacienteNome={pacienteNome} />
     </>
   );
 }
@@ -479,25 +698,141 @@ function CheckinPersonalizado({ pacienteId, nutriId, pacienteNome }) {
 /* ============================================================
    AVALIAÇÃO ANTROPOMÉTRICA
    ============================================================ */
+const FORMULAS_DOBRA = ['Pollock 3', 'Pollock 7', 'Petroski', 'Guedes', 'Durnin', 'Faulkner', 'Nenhuma'];
+
+const DOBRAS_LIST = [
+  { key: 'dobra_tricipital',    label: 'Tricipital' },
+  { key: 'dobra_bicipital',     label: 'Bicipital' },
+  { key: 'dobra_abdominal',     label: 'Abdominal' },
+  { key: 'dobra_subescapular',  label: 'Subescapular' },
+  { key: 'dobra_axilar_media',  label: 'Axilar média' },
+  { key: 'dobra_coxa',          label: 'Coxa' },
+  { key: 'dobra_toracica',      label: 'Torácica' },
+  { key: 'dobra_suprailiaca',   label: 'Suprailíaca' },
+  { key: 'dobra_panturrilha',   label: 'Panturrilha' },
+  { key: 'dobra_supraespinhal', label: 'Supraespinhal' },
+];
+
+const METRICAS_AVALIACAO = [
+  { key: 'kg',               label: 'Peso',             unidade: 'kg', dec: 1 },
+  { key: 'cintura_cm',       label: 'Cintura',          unidade: 'cm', dec: 1 },
+  { key: 'quadril_cm',       label: 'Quadril',          unidade: 'cm', dec: 1 },
+  { key: 'pgc',              label: '% gordura',        unidade: '%',  dec: 1 },
+  { key: 'mm_kg',            label: 'Massa magra',      unidade: 'kg', dec: 1 },
+  { key: 'agua_corporal',    label: 'Água corporal',    unidade: '%',  dec: 1 },
+  { key: 'gordura_visceral', label: 'Gordura visceral', unidade: '',   dec: 1 },
+  { key: 'tmb',              label: 'TMB',              unidade: 'kcal', dec: 0 },
+];
+
+function GraficoAvaliacao({ historico }) {
+  const [metrica, setMetrica] = useState('kg');
+  const registros = [...historico].reverse(); // carregar() traz desc; gráfico precisa asc
+
+  const metricasDisponiveis = METRICAS_AVALIACAO.filter(m => registros.some(r => r[m.key] != null));
+  const dados = registros.filter(r => r[metrica] != null).map(r => ({ ...r, valor: Number(r[metrica]) }));
+
+  if (metricasDisponiveis.length === 0 || dados.length < 2) return null;
+
+  const metricaAtual = METRICAS_AVALIACAO.find(m => m.key === metrica) ?? metricasDisponiveis[0];
+  const min = Math.min(...dados.map(p => p.valor)) - 0.5;
+  const max = Math.max(...dados.map(p => p.valor)) + 0.5;
+  const range = max - min || 1;
+  const points = dados.map((p, i) => ({
+    x: (i / (dados.length - 1)) * 100,
+    y: 100 - ((p.valor - min) / range) * 100,
+  }));
+  const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  const area = path + ' L 100 100 L 0 100 Z';
+  const atual = dados[dados.length - 1];
+  const inicial = dados[0];
+  const dif = atual.valor - inicial.valor;
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-body">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+          {metricasDisponiveis.map(m => (
+            <button key={m.key} onClick={() => setMetrica(m.key)}
+              style={{
+                padding: '5px 10px', fontSize: 11, borderRadius: 20, cursor: 'pointer',
+                background: m.key === metrica ? 'var(--dark)' : 'transparent',
+                color: m.key === metrica ? '#fff' : 'var(--text3)',
+                border: m.key === metrica ? 'none' : '0.5px solid var(--border)',
+                fontFamily: 'var(--font-sans)',
+              }}>
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 8 }}>
+          <span style={{ fontSize: 26, fontWeight: 600 }}>
+            {atual.valor.toFixed(metricaAtual.dec).replace('.', ',')}{metricaAtual.unidade}
+          </span>
+          {dif !== 0 && (
+            <span className={`pill ${dif < 0 ? 'pill-g' : 'pill-r'}`}>
+              {dif > 0 ? '+' : '−'}{Math.abs(dif).toFixed(metricaAtual.dec).replace('.', ',')}{metricaAtual.unidade}
+            </span>
+          )}
+          <span style={{ fontSize: 11, color: 'var(--text3)' }}>desde {dataBR(inicial.data)}</span>
+        </div>
+
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: '100%', height: 140 }}>
+          <defs>
+            <linearGradient id="avalFade" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#c4a882" stopOpacity=".3" />
+              <stop offset="100%" stopColor="#c4a882" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {[25, 50, 75].map(y => (
+            <line key={y} x1="0" x2="100" y1={y} y2={y} stroke="#e6dfd3" strokeWidth=".3" strokeDasharray="1,1" />
+          ))}
+          <path d={area} fill="url(#avalFade)" />
+          <path d={path} fill="none" stroke="#1c1712" strokeWidth=".7"
+            strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          {points.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r="1.2" fill="#c4a882" stroke="#1c1712" strokeWidth=".4" vectorEffect="non-scaling-stroke" />
+          ))}
+        </svg>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
+          <span>{dataBR(dados[0]?.data)}</span>
+          <span>{dataBR(dados[dados.length - 1]?.data)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RegistrarAvaliacao({ pacienteId, nutriId }) {
   const [historico, setHistorico] = useState([]);
   const [form, setForm] = useState(novaAvaliacao());
   const [pdfFile, setPdfFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [expandidos, setExpandidos] = useState({});
 
   function novaAvaliacao() {
     return {
       data: new Date().toISOString().slice(0, 10),
       kg: '', altura_cm: '', cintura_cm: '', quadril_cm: '',
-      braco_cm: '', coxa_cm: '', pgc: '', mm_kg: '', obs: '',
+      braco_cm: '', coxa_cm: '', pgc: '', mm_kg: '',
+      agua_corporal: '', gordura_visceral: '', tmb: '',
+      dobra_formula: '',
+      dobra_tricipital: '', dobra_bicipital: '', dobra_abdominal: '', dobra_subescapular: '',
+      dobra_axilar_media: '', dobra_coxa: '', dobra_toracica: '', dobra_suprailiaca: '',
+      dobra_panturrilha: '', dobra_supraespinhal: '',
+      obs: '',
     };
   }
 
   async function carregar() {
     const { data } = await supabase
       .from('peso_registros')
-      .select('id, data, kg, altura_cm, cintura_cm, quadril_cm, braco_cm, coxa_cm, pgc, mm_kg, obs, pdf_url')
+      .select(`id, data, kg, altura_cm, cintura_cm, quadril_cm, braco_cm, coxa_cm, pgc, mm_kg,
+        agua_corporal, gordura_visceral, tmb, dobra_formula,
+        dobra_tricipital, dobra_bicipital, dobra_abdominal, dobra_subescapular,
+        dobra_axilar_media, dobra_coxa, dobra_toracica, dobra_suprailiaca,
+        dobra_panturrilha, dobra_supraespinhal, obs, pdf_url`)
       .eq('paciente_id', pacienteId)
       .order('data', { ascending: false });
     setHistorico(data ?? []);
@@ -541,17 +876,36 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
       coxa_cm: num(form.coxa_cm),
       pgc: num(form.pgc),
       mm_kg: num(form.mm_kg),
+      agua_corporal: num(form.agua_corporal),
+      gordura_visceral: num(form.gordura_visceral),
+      tmb: num(form.tmb),
+      dobra_formula: form.dobra_formula || null,
+      dobra_tricipital: num(form.dobra_tricipital),
+      dobra_bicipital: num(form.dobra_bicipital),
+      dobra_abdominal: num(form.dobra_abdominal),
+      dobra_subescapular: num(form.dobra_subescapular),
+      dobra_axilar_media: num(form.dobra_axilar_media),
+      dobra_coxa: num(form.dobra_coxa),
+      dobra_toracica: num(form.dobra_toracica),
+      dobra_suprailiaca: num(form.dobra_suprailiaca),
+      dobra_panturrilha: num(form.dobra_panturrilha),
+      dobra_supraespinhal: num(form.dobra_supraespinhal),
       obs: form.obs.trim() || null,
       pdf_url: pdfUrl,
     };
     const { error, omitidos } = await omitColunasFaltantes(
-      payload, ['pdf_url'],
+      payload, [
+        'pdf_url', 'agua_corporal', 'gordura_visceral', 'tmb', 'dobra_formula',
+        'dobra_tricipital', 'dobra_bicipital', 'dobra_abdominal', 'dobra_subescapular',
+        'dobra_axilar_media', 'dobra_coxa', 'dobra_toracica', 'dobra_suprailiaca',
+        'dobra_panturrilha', 'dobra_supraespinhal',
+      ],
       (p) => supabase.from('peso_registros').insert(p),
     );
     setBusy(false);
     if (error) return setFeedback({ tipo: 'erro', msg: error.message });
     const msgOmitido = omitidos.length
-      ? ` (PDF não salvo — rode o SQL atualizado: github.com/danielasoares-rd/lapidare-app/blob/main/supabase/delta-v1.12.0.sql)`
+      ? ` (${omitidos.join(', ')} não salvo — rode os SQLs mais recentes na pasta supabase/)`
       : (pdfUrl ? ' PDF anexado.' : '');
     setFeedback({ tipo: omitidos.length ? 'erro' : 'ok', msg: `Avaliação registrada.${msgOmitido}` });
     setForm(novaAvaliacao());
@@ -627,8 +981,8 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
             </div>
           </div>
 
-          <div className="section-label" style={{ marginTop: 14, marginBottom: 6 }}>Composição corporal</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div className="section-label" style={{ marginTop: 14, marginBottom: 6 }}>Composição corporal (bioimpedância)</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
             <div>
               <label className="field-label">% gordura corporal</label>
               <input inputMode="decimal" placeholder="ex: 28,5" value={form.pgc} onChange={set('pgc')} />
@@ -637,6 +991,44 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
               <label className="field-label">Massa magra (kg)</label>
               <input inputMode="decimal" placeholder="ex: 48,2" value={form.mm_kg} onChange={set('mm_kg')} />
             </div>
+            <div>
+              <label className="field-label">Água corporal (%)</label>
+              <input inputMode="decimal" placeholder="ex: 52" value={form.agua_corporal} onChange={set('agua_corporal')} />
+            </div>
+            <div>
+              <label className="field-label">Gordura visceral</label>
+              <input inputMode="decimal" placeholder="ex: 7" value={form.gordura_visceral} onChange={set('gordura_visceral')} />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, marginTop: 10, maxWidth: '24%' }}>
+            <div>
+              <label className="field-label">TMB (kcal)</label>
+              <input inputMode="decimal" placeholder="ex: 1450" value={form.tmb} onChange={set('tmb')} />
+            </div>
+          </div>
+
+          <div className="section-label" style={{ marginTop: 14, marginBottom: 6 }}>Dobras cutâneas (mm)</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+            {FORMULAS_DOBRA.map(f => (
+              <button key={f} type="button" onClick={() => setForm(v => ({ ...v, dobra_formula: f }))}
+                style={{
+                  padding: '4px 10px', fontSize: 11, borderRadius: 20, cursor: 'pointer',
+                  background: form.dobra_formula === f ? 'var(--dark)' : 'transparent',
+                  color: form.dobra_formula === f ? '#fff' : 'var(--text3)',
+                  border: form.dobra_formula === f ? 'none' : '0.5px solid var(--border)',
+                  fontFamily: 'var(--font-sans)',
+                }}>
+                {f}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {DOBRAS_LIST.map(d => (
+              <div key={d.key}>
+                <label className="field-label">{d.label}</label>
+                <input inputMode="decimal" value={form[d.key]} onChange={set(d.key)} />
+              </div>
+            ))}
           </div>
 
           <label className="field-label" style={{ marginTop: 14 }}>Observação (opcional)</label>
@@ -660,13 +1052,15 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
         </div>
       </div>
 
+      <GraficoAvaliacao historico={historico} />
+
       <div className="section-label">Histórico ({historico.length})</div>
       {historico.length === 0 ? (
         <div className="card empty-card">
           <div className="empty-sub">Nenhuma avaliação registrada ainda.</div>
         </div>
       ) : (
-        <div className="card" style={{ padding: 0 }}>
+        <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
           <table className="table">
             <thead>
               <tr>
@@ -676,37 +1070,73 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
                 <th>Quadril</th>
                 <th>% gordura</th>
                 <th>M. magra</th>
+                <th>Água</th>
+                <th>Visceral</th>
+                <th>Dobras</th>
                 <th>PDF</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {historico.map(a => (
-                <tr key={a.id}>
-                  <td>{dataBR(a.data)}</td>
-                  <td><strong>{a.kg ? `${a.kg} kg` : '—'}</strong></td>
-                  <td>{a.cintura_cm ? `${a.cintura_cm} cm` : '—'}</td>
-                  <td>{a.quadril_cm ? `${a.quadril_cm} cm` : '—'}</td>
-                  <td>{a.pgc ? `${a.pgc}%` : '—'}</td>
-                  <td>{a.mm_kg ? `${a.mm_kg} kg` : '—'}</td>
-                  <td>
-                    {a.pdf_url ? (
-                      <a href={a.pdf_url} target="_blank" rel="noopener noreferrer"
-                         title="Abrir PDF"
-                         style={{ color: 'var(--gold-deep)', display: 'inline-flex', alignItems: 'center' }}>
-                        <i className="ti ti-file-download" style={{ fontSize: 16 }} aria-hidden="true"></i>
-                      </a>
-                    ) : <span style={{ color: 'var(--text3)' }}>—</span>}
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button onClick={() => remover(a.id)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', padding: 4 }}
-                      title="Remover">
-                      <i className="ti ti-trash" style={{ fontSize: 15 }} aria-hidden="true"></i>
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {historico.map(a => {
+                const dobrasPreenchidas = DOBRAS_LIST.filter(d => a[d.key] != null);
+                const expandido = expandidos[a.id];
+                return (
+                  <Fragment key={a.id}>
+                    <tr>
+                      <td>{dataBR(a.data)}</td>
+                      <td><strong>{a.kg ? `${a.kg} kg` : '—'}</strong></td>
+                      <td>{a.cintura_cm ? `${a.cintura_cm} cm` : '—'}</td>
+                      <td>{a.quadril_cm ? `${a.quadril_cm} cm` : '—'}</td>
+                      <td>{a.pgc ? `${a.pgc}%` : '—'}</td>
+                      <td>{a.mm_kg ? `${a.mm_kg} kg` : '—'}</td>
+                      <td>{a.agua_corporal ? `${a.agua_corporal}%` : '—'}</td>
+                      <td>{a.gordura_visceral ?? '—'}</td>
+                      <td>
+                        {dobrasPreenchidas.length > 0 ? (
+                          <button onClick={() => setExpandidos(v => ({ ...v, [a.id]: !v[a.id] }))}
+                            style={{
+                              background: 'none', border: '0.5px solid var(--border)', borderRadius: 6,
+                              padding: '2px 8px', fontSize: 11, cursor: 'pointer', color: 'var(--text2)',
+                            }}>
+                            {expandido ? 'Ocultar' : `Ver (${dobrasPreenchidas.length})`}
+                          </button>
+                        ) : <span style={{ color: 'var(--text3)' }}>—</span>}
+                      </td>
+                      <td>
+                        {a.pdf_url ? (
+                          <a href={a.pdf_url} target="_blank" rel="noopener noreferrer"
+                             title="Abrir PDF"
+                             style={{ color: 'var(--gold-deep)', display: 'inline-flex', alignItems: 'center' }}>
+                            <i className="ti ti-file-download" style={{ fontSize: 16 }} aria-hidden="true"></i>
+                          </a>
+                        ) : <span style={{ color: 'var(--text3)' }}>—</span>}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button onClick={() => remover(a.id)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', padding: 4 }}
+                          title="Remover">
+                          <i className="ti ti-trash" style={{ fontSize: 15 }} aria-hidden="true"></i>
+                        </button>
+                      </td>
+                    </tr>
+                    {expandido && (
+                      <tr>
+                        <td colSpan={11} style={{ background: 'var(--bg2)', fontSize: 12 }}>
+                          {a.dobra_formula && (
+                            <strong style={{ marginRight: 10 }}>Fórmula: {a.dobra_formula}</strong>
+                          )}
+                          {dobrasPreenchidas.map(d => (
+                            <span key={d.key} style={{ marginRight: 14, color: 'var(--text2)' }}>
+                              {d.label}: <strong>{a[d.key]} mm</strong>
+                            </span>
+                          ))}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1603,19 +2033,26 @@ function PedidoExame({ pacienteId, nutriId, pacienteNome }) {
 /* ============================================================
    PUBLICAR PLANO
    ============================================================ */
+const DADOS_VAZIO = { macros: {}, refeicoes: [] };
+
 function PublicarPlano({ pacienteId, nutriId }) {
   const [historico, setHistorico] = useState([]);
-  const [json, setJson] = useState('');
+  const [dados, setDados] = useState(DADOS_VAZIO); // fonte principal — editor visual
+  const [json, setJson] = useState(''); // só usado no modo avançado
+  const [modoAvancado, setModoAvancado] = useState(false);
+  const [alimentosBase, setAlimentosBase] = useState([]);
   const [validade, setValidade] = useState('');
   const [pdfFile, setPdfFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [verJson, setVerJson] = useState(null);
+  const [preview, setPreview] = useState(null); // { dados, validade, pdfPlano } — usado tanto pra prévia do form quanto do histórico
+  const [editandoId, setEditandoId] = useState(null); // id do plano sendo editado, null = plano novo
 
   async function carregar() {
     const { data } = await supabase
       .from('planos')
-      .select('id, dados, validade, pdf_url, publicado_em')
+      .select('id, dados, validade, pdf_url, publicado_em, ativo')
       .eq('paciente_id', pacienteId)
       .order('publicado_em', { ascending: false })
       .limit(5);
@@ -1623,26 +2060,102 @@ function PublicarPlano({ pacienteId, nutriId }) {
   }
   useEffect(() => { carregar(); }, [pacienteId]);
 
-  async function publicar() {
-    setFeedback(null);
-    // Permite publicar com JSON OU só PDF (pelo menos um dos dois).
-    // Se a nutri quer mandar só o PDF (vindo do Shaped/avaliação externa)
-    // sem montar o JSON estruturado, salva com dados vazios.
-    const temJson = json.trim().length > 0;
-    if (!temJson && !pdfFile) {
-      return setFeedback({ tipo: 'erro', msg: 'Cole o JSON do plano OU anexe um PDF (pelo menos um dos dois).' });
-    }
+  // Base de alimentos pra busca do editor visual — carrega uma vez só
+  // (independe da paciente aberta).
+  useEffect(() => {
+    supabase.from('alimentos')
+      .select('id, nome, medida_padrao, kcal, prot_g, cho_g, lip_g')
+      .order('nome')
+      .then(({ data }) => setAlimentosBase(data ?? []));
+  }, []);
 
-    let dados = { somente_pdf: true };
-    if (temJson) {
-      try { dados = JSON.parse(json); }
-      catch (e) { return setFeedback({ tipo: 'erro', msg: 'JSON inválido: ' + e.message }); }
+  function temAlgumConteudo() {
+    return modoAvancado ? json.trim().length > 0 : (dados.refeicoes ?? []).length > 0;
+  }
+
+  // Permite publicar com plano montado (visual ou JSON) OU só PDF (pelo
+  // menos um dos dois). Se a nutri quer mandar só o PDF (vindo de uma
+  // avaliação externa) sem montar o plano estruturado, salva com dados vazios.
+  function prepararDados() {
+    if (modoAvancado) {
+      const temJson = json.trim().length > 0;
+      if (!temJson) return { dados: { somente_pdf: true } };
+      let obj;
+      try { obj = JSON.parse(json); }
+      catch (e) { return { erro: 'JSON inválido: ' + e.message }; }
       // Normaliza aliases (proteinas_g → prot_g, quantidade → qty, etc.) antes
       // de validar e salvar — evita quebrar planos gerados por prompts antigos.
-      dados = normalizarPlano(dados);
-      const v = validarPlano(dados);
-      if (!v.ok) return setFeedback({ tipo: 'erro', msg: v.erro });
+      obj = normalizarPlano(obj);
+      const v = validarPlano(obj);
+      if (!v.ok) return { erro: v.erro };
+      return { dados: obj };
     }
+    if ((dados.refeicoes ?? []).length === 0) return { dados: { somente_pdf: true } };
+    const normalizado = normalizarPlano(dados);
+    const v = validarPlano(normalizado);
+    if (!v.ok) return { erro: v.erro };
+    return { dados: normalizado };
+  }
+
+  function prever() {
+    setFeedback(null);
+    const { dados: d, erro } = prepararDados();
+    if (erro) return setFeedback({ tipo: 'erro', msg: erro });
+    setPreview({
+      dados: d,
+      validade: validade || d.validade || null,
+      pdfPlano: pdfFile ? URL.createObjectURL(pdfFile) : (historico.find(h => h.id === editandoId)?.pdf_url ?? null),
+    });
+  }
+
+  function cancelarEdicao() {
+    setEditandoId(null);
+    setDados(DADOS_VAZIO);
+    setJson('');
+    setModoAvancado(false);
+    setValidade('');
+    setPdfFile(null);
+  }
+
+  function editar(p) {
+    setFeedback(null);
+    setEditandoId(p.id);
+    setDados(p.dados?.refeicoes ? p.dados : DADOS_VAZIO);
+    setModoAvancado(false);
+    setValidade(p.validade ? p.validade.slice(0, 10) : '');
+    setPdfFile(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // Alterna pro modo "colar JSON" (avançado) — serializa o que já foi
+  // montado no editor visual, pra não perder nada ao trocar de modo.
+  function ativarModoAvancado() {
+    setJson(JSON.stringify(dados, null, 2));
+    setModoAvancado(true);
+  }
+
+  // Volta pro editor visual — reinterpreta o JSON atual do textarea
+  // como o novo estado do editor. Se o JSON estiver quebrado, avisa e
+  // mantém no modo avançado (não perde o que a nutri digitou).
+  function voltarModoVisual() {
+    if (json.trim()) {
+      try {
+        setDados(normalizarPlano(JSON.parse(json)));
+      } catch (e) {
+        setFeedback({ tipo: 'erro', msg: 'Não consegui interpretar esse JSON pra voltar ao editor visual: ' + e.message });
+        return;
+      }
+    }
+    setModoAvancado(false);
+  }
+
+  async function publicar() {
+    setFeedback(null);
+    if (!temAlgumConteudo() && !pdfFile) {
+      return setFeedback({ tipo: 'erro', msg: 'Monte o plano OU anexe um PDF (pelo menos um dos dois).' });
+    }
+    const { dados, erro } = prepararDados();
+    if (erro) return setFeedback({ tipo: 'erro', msg: erro });
 
     setBusy(true);
     let pdfUrl = null;
@@ -1653,15 +2166,21 @@ function PublicarPlano({ pacienteId, nutriId }) {
       return setFeedback({ tipo: 'erro', msg: e.message });
     }
 
+    // Desativa o plano ativo anterior antes de inserir o novo — evita colidir
+    // com o índice único (só 1 "ativo" por vez) e garante que a paciente
+    // sempre vê o plano recém-publicado.
+    await supabase.from('planos').update({ ativo: false }).eq('paciente_id', pacienteId).eq('ativo', true);
+
     const planoPayload = {
       paciente_id: pacienteId,
       nutri_id: nutriId,
       dados,
       validade: validade || dados.validade || null,
       pdf_url: pdfUrl,
+      ativo: true,
     };
     const { error, omitidos } = await omitColunasFaltantes(
-      planoPayload, ['pdf_url'],
+      planoPayload, ['pdf_url', 'ativo'],
       (p) => supabase.from('planos').insert(p),
     );
     setBusy(false);
@@ -1670,9 +2189,47 @@ function PublicarPlano({ pacienteId, nutriId }) {
       ? ` ATENÇÃO: PDF não foi salvo. Rode o SQL: github.com/danielasoares-rd/lapidare-app/blob/main/supabase/delta-v1.10.0.sql`
       : (pdfUrl ? ' PDF anexado.' : '');
     setFeedback({ tipo: omitidos.length ? 'erro' : 'ok', msg: `Plano publicado!${aviso} A paciente verá agora.` });
-    setJson('');
-    setValidade('');
-    setPdfFile(null);
+    cancelarEdicao();
+    carregar();
+  }
+
+  async function atualizarPlano() {
+    setFeedback(null);
+    const { dados, erro } = prepararDados();
+    if (erro) return setFeedback({ tipo: 'erro', msg: erro });
+
+    setBusy(true);
+    let pdfUrl = historico.find(h => h.id === editandoId)?.pdf_url ?? null;
+    if (pdfFile) {
+      try { pdfUrl = await uploadDocumento(pdfFile, { nutriId, pacienteId, tipo: 'plano' }); }
+      catch (e) {
+        setBusy(false);
+        return setFeedback({ tipo: 'erro', msg: e.message });
+      }
+    }
+    const { error } = await supabase.from('planos').update({
+      dados,
+      validade: validade || dados.validade || null,
+      pdf_url: pdfUrl,
+    }).eq('id', editandoId);
+    setBusy(false);
+    if (error) return setFeedback({ tipo: 'erro', msg: error.message });
+    setFeedback({ tipo: 'ok', msg: 'Plano atualizado.' });
+    cancelarEdicao();
+    carregar();
+  }
+
+  async function ativarPlano(p) {
+    if (p.ativo) return;
+    setBusy(true);
+    const atual = historico.find(h => h.ativo);
+    if (atual) {
+      await supabase.from('planos').update({ ativo: false }).eq('id', atual.id);
+    }
+    const { error } = await supabase.from('planos').update({ ativo: true }).eq('id', p.id);
+    setBusy(false);
+    if (error) return setFeedback({ tipo: 'erro', msg: error.message });
+    setFeedback({ tipo: 'ok', msg: 'Plano ativado. A paciente verá este agora.' });
     carregar();
   }
 
@@ -1681,6 +2238,7 @@ function PublicarPlano({ pacienteId, nutriId }) {
     if (!window.confirm(`Excluir plano publicado em ${data}?\n\nA paciente não verá mais este plano. Esta ação não pode ser desfeita.`)) return;
     const { error } = await supabase.from('planos').delete().eq('id', p.id);
     if (error) return setFeedback({ tipo: 'erro', msg: error.message });
+    if (editandoId === p.id) cancelarEdicao();
     setFeedback({ tipo: 'ok', msg: 'Plano excluído.' });
     carregar();
   }
@@ -1690,27 +2248,43 @@ function PublicarPlano({ pacienteId, nutriId }) {
       <div className="card">
         <div className="card-header">
           <div>
-            <div className="card-title">Publicar novo plano alimentar</div>
-            <div className="card-sub">Cole o JSON da Skill 6 OU anexe um PDF — pelo menos um dos dois</div>
+            <div className="card-title">
+              {editandoId ? 'Editando plano publicado' : 'Publicar novo plano alimentar'}
+            </div>
+            <div className="card-sub">
+              {editandoId
+                ? 'Ajuste o plano abaixo e escolha se quer salvar como um plano novo ou atualizar este mesmo plano.'
+                : 'Monte o plano refeição por refeição OU anexe um PDF — pelo menos um dos dois'}
+            </div>
           </div>
+          <button className="btn-outline" style={{ fontSize: 12, padding: '4px 10px' }}
+            onClick={modoAvancado ? voltarModoVisual : ativarModoAvancado}>
+            {modoAvancado ? 'Voltar pro editor visual' : 'Avançado: colar JSON'}
+          </button>
         </div>
         <div className="card-body">
-          <label className="field-label">JSON do plano (opcional se anexar PDF)</label>
-          <textarea
-            value={json}
-            onChange={e => setJson(e.target.value)}
-            rows={10}
-            placeholder='{"macros": {"kcal": 1500, ...}, "refeicoes": [...]}'
-            style={{ width: '100%', fontFamily: 'monospace', fontSize: 13, resize: 'vertical' }}
-          />
+          {modoAvancado ? (
+            <>
+              <label className="field-label">JSON do plano (opcional se anexar PDF)</label>
+              <textarea
+                value={json}
+                onChange={e => setJson(e.target.value)}
+                rows={10}
+                placeholder='{"macros": {"kcal": 1500, ...}, "refeicoes": [...]}'
+                style={{ width: '100%', fontFamily: 'monospace', fontSize: 13, resize: 'vertical' }}
+              />
 
-          <DicaJSON
-            exemploPrompt='gera um JSON de plano alimentar pra paciente com objetivo de emagrecimento, 1500 kcal, 4 refeições (café, almoço, lanche, jantar). Use EXATAMENTE estes nomes de campo (não invente nem traduza): { "macros": { "kcal": 1500, "prot_g": 90, "cho_g": 150, "lip_g": 50, "agua_l": 2.5, "fibras_g": 25 }, "refeicoes": [ { "nome": "Café da manhã", "horario": "07:30", "emoji": "☕", "kcal": 350, "alimentos": [ { "nome": "Pão integral", "qty": "2 fatias", "kcal": 140, "prot_g": 6, "subs": ["Tapioca · 2 col sopa", "Aveia · 3 col sopa"] } ], "obs": "beber 1 copo de água antes" } ] }. IMPORTANTE: "subs" deve ser array de STRINGS (não objetos). Use "prot_g", "cho_g", "lip_g" (não "proteinas_g"). Use "qty" (não "quantidade").' />
+              <DicaJSON
+                exemploPrompt='Anexei o PDF do plano alimentar que já montei pra essa paciente. Transforme EXATAMENTE esse plano (os mesmos alimentos, quantidades e observações que já estão no PDF — não invente nem troque por exemplos genéricos) num JSON com esses nomes de campo EXATOS (não traduza): { "macros": { "kcal": 1500, "prot_g": 90, "cho_g": 150, "lip_g": 50, "agua_l": 2.5, "fibras_g": 25 }, "refeicoes": [ { "nome": "Café da manhã", "horario": "07:30", "emoji": "☕", "kcal": 350, "alimentos": [ { "nome": "Pão integral", "qty": "2 fatias", "kcal": 140, "prot_g": 6, "subs": ["Tapioca · 2 col sopa", "Aveia · 3 col sopa"] } ], "obs": "beber 1 copo de água antes" } ] }. IMPORTANTE: "subs" deve ser array de STRINGS (não objetos). Use "prot_g", "cho_g", "lip_g" (não "proteinas_g"). Use "qty" (não "quantidade").' />
+            </>
+          ) : (
+            <PlanoEditor dados={dados} onChange={setDados} alimentosBase={alimentosBase} />
+          )}
 
           <UploadPdfField
             pdfFile={pdfFile}
             setPdfFile={setPdfFile}
-            pdfUrlAtual={historico[0]?.pdf_url}
+            pdfUrlAtual={editandoId ? historico.find(h => h.id === editandoId)?.pdf_url : historico[0]?.pdf_url}
             tipo="plano"
           />
 
@@ -1719,10 +2293,24 @@ function PublicarPlano({ pacienteId, nutriId }) {
               <label className="field-label">Validade (opcional)</label>
               <input type="date" value={validade} onChange={e => setValidade(e.target.value)} />
             </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-              <button className="btn" onClick={publicar} disabled={busy || (!json.trim() && !pdfFile)}>
-                <i className="ti ti-send" aria-hidden="true"></i> {busy ? 'Publicando...' : 'Publicar plano'}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn-outline" onClick={prever} disabled={!temAlgumConteudo() && !pdfFile}>
+                <i className="ti ti-eye" aria-hidden="true"></i> Pré-visualizar
               </button>
+              {editandoId && (
+                <button className="btn-outline" onClick={atualizarPlano} disabled={busy}>
+                  <i className="ti ti-refresh" aria-hidden="true"></i> {busy ? 'Salvando...' : 'Atualizar este plano'}
+                </button>
+              )}
+              <button className="btn" onClick={publicar} disabled={busy || (!temAlgumConteudo() && !pdfFile)}>
+                <i className="ti ti-send" aria-hidden="true"></i>
+                {busy ? 'Publicando...' : editandoId ? 'Salvar como novo plano' : 'Publicar plano'}
+              </button>
+              {editandoId && (
+                <button className="btn-outline" onClick={cancelarEdicao} disabled={busy}>
+                  Cancelar edição
+                </button>
+              )}
             </div>
           </div>
 
@@ -1737,19 +2325,40 @@ function PublicarPlano({ pacienteId, nutriId }) {
         renderItem={(p) => (
           <>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 500 }}>
+              <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
                 {p.dados?.macros?.kcal ? `${p.dados.macros.kcal} kcal · ` : ''}
                 {p.dados?.refeicoes?.length ?? 0} refeições
+                {p.ativo && (
+                  <span className="pill" style={{ fontSize: 10, background: 'var(--green-bg, #e6f4ea)', color: 'var(--green, #1e7a34)' }}>
+                    Ativo
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
                 Publicado em {dataBR(p.publicado_em)}
                 {p.validade && ` · válido até ${dataBR(p.validade)}`}
               </div>
             </div>
-            <button className="btn-outline" style={{ fontSize: 12, padding: '4px 10px' }}
-              onClick={() => setVerJson(p)}>
-              <i className="ti ti-code" aria-hidden="true"></i> JSON
-            </button>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {!p.ativo && (
+                <button className="btn-outline" style={{ fontSize: 12, padding: '4px 10px' }}
+                  onClick={() => ativarPlano(p)} disabled={busy}>
+                  <i className="ti ti-check" aria-hidden="true"></i> Ativar este plano
+                </button>
+              )}
+              <button className="btn-outline" style={{ fontSize: 12, padding: '4px 10px' }}
+                onClick={() => setPreview({ dados: p.dados, validade: p.validade, pdfPlano: p.pdf_url })}>
+                <i className="ti ti-eye" aria-hidden="true"></i> Visualizar
+              </button>
+              <button className="btn-outline" style={{ fontSize: 12, padding: '4px 10px' }}
+                onClick={() => editar(p)}>
+                <i className="ti ti-pencil" aria-hidden="true"></i> Editar
+              </button>
+              <button className="btn-outline" style={{ fontSize: 12, padding: '4px 10px' }}
+                onClick={() => setVerJson(p)}>
+                <i className="ti ti-code" aria-hidden="true"></i> JSON
+              </button>
+            </div>
           </>
         )}
       />
@@ -1757,7 +2366,46 @@ function PublicarPlano({ pacienteId, nutriId }) {
       {verJson && (
         <VerJsonModal item={verJson} dados={verJson.dados} onClose={() => setVerJson(null)} />
       )}
+
+      {preview && (
+        <PreviewPlanoModal
+          dados={preview.dados}
+          validade={preview.validade}
+          pdfPlano={preview.pdfPlano}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </>
+  );
+}
+
+function PreviewPlanoModal({ dados, validade, pdfPlano, onClose }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(28,23,18,.55)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+      padding: 16,
+    }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: 'var(--paper, var(--white))', borderRadius: 12,
+        width: 420, maxWidth: '100%', maxHeight: '90vh',
+        border: '0.5px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '14px 16px', borderBottom: '0.5px solid var(--border)', flexShrink: 0,
+        }}>
+          <div style={{ fontFamily: 'var(--font-serif)', fontSize: 16 }}>Prévia — o que a paciente vê</div>
+          <button className="btn-outline" style={{ fontSize: 12, padding: '4px 10px' }} onClick={onClose}>
+            Fechar
+          </button>
+        </div>
+        <div style={{ overflow: 'auto', padding: '12px 0' }}>
+          <PlanoView dados={dados} validade={validade} pdfPlano={pdfPlano} pdfSubs={null} subsExternas={null} />
+        </div>
+      </div>
+    </div>
   );
 }
 
