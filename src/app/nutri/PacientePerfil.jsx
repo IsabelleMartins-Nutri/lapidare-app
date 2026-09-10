@@ -9,10 +9,12 @@ import {
   omitColunasFaltantes,
 } from '../../lib/utils.js';
 import { TEMPLATE_PADRAO, formatarResposta, calcularPontuacaoSecoes } from '../../lib/checkinDefault.js';
+import { EXAMES_PARAMS, EXAMES_STATUS } from '../../lib/examesDefault.js';
 import CheckinForm from '../../components/CheckinForm.jsx';
 import Evolucao from './_Evolucao.jsx';
 import FollowUp from './_FollowUp.jsx';
 import Meta from './_Meta.jsx';
+import Panorama from './_Panorama.jsx';
 import Suplementacao from './_Suplementacao.jsx';
 import Habitos from './_Habitos.jsx';
 import Anamnese from './_Anamnese.jsx';
@@ -385,6 +387,7 @@ export default function PacientePerfil() {
           { id: 'anamnese',    label: 'Atendimento',  icon: 'clipboard-text' },
           { id: 'followup',    label: 'Follow-up',    icon: 'notebook' },
           { id: 'meta',        label: 'Meta',         icon: 'target-arrow' },
+          { id: 'panorama',    label: 'Panorama',     icon: 'route' },
           { id: 'plano',          label: 'Plano',          icon: 'salad' },
           { id: 'substituicoes', label: 'Substituições',  icon: 'switch-horizontal' },
           { id: 'compras',     label: 'Compras',      icon: 'shopping-cart' },
@@ -422,6 +425,7 @@ export default function PacientePerfil() {
       {tab === 'anamnese' && <Anamnese pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'followup' && <FollowUp pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'meta' && <Meta pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
+      {tab === 'panorama' && <Panorama pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'suplementacao' && <Suplementacao pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'habitos' && <Habitos pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'plano' && <PublicarPlano pacienteId={paciente.id} nutriId={user.id} />}
@@ -764,6 +768,7 @@ const METRICAS_AVALIACAO = [
   { key: 'panturrilha_cm',   label: 'Panturrilha',      unidade: 'cm', dec: 1 },
   { key: 'pgc',              label: '% gordura',        unidade: '%',  dec: 1 },
   { key: 'mm_kg',            label: 'Massa magra',      unidade: 'kg', dec: 1 },
+  { key: 'mm_pct',           label: 'Massa magra %',    unidade: '%',  dec: 1 },
   { key: 'agua_corporal',    label: 'Água corporal',    unidade: '%',  dec: 1 },
   { key: 'gordura_visceral', label: 'Gordura visceral', unidade: '',   dec: 1 },
   { key: 'tmb',              label: 'TMB',              unidade: 'kcal', dec: 0 },
@@ -861,7 +866,7 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
       data: new Date().toISOString().slice(0, 10),
       kg: '', altura_cm: '', cintura_cm: '', quadril_cm: '',
       braco_cm: '', coxa_cm: '', torax_cm: '', abdomen_cm: '', panturrilha_cm: '',
-      pgc: '', mm_kg: '',
+      pgc: '', mm_kg: '', mm_pct: '',
       agua_corporal: '', gordura_visceral: '', tmb: '',
       dobra_formula: '',
       dobra_tricipital: '', dobra_bicipital: '', dobra_abdominal: '', dobra_subescapular: '',
@@ -875,7 +880,7 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
     const { data } = await supabase
       .from('peso_registros')
       .select(`id, data, kg, altura_cm, cintura_cm, quadril_cm, braco_cm, coxa_cm,
-        torax_cm, abdomen_cm, panturrilha_cm, pgc, mm_kg,
+        torax_cm, abdomen_cm, panturrilha_cm, pgc, mm_kg, mm_pct,
         agua_corporal, gordura_visceral, tmb, dobra_formula,
         dobra_tricipital, dobra_bicipital, dobra_abdominal, dobra_subescapular,
         dobra_axilar_media, dobra_coxa, dobra_toracica, dobra_suprailiaca,
@@ -926,6 +931,7 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
       panturrilha_cm: num(form.panturrilha_cm),
       pgc: num(form.pgc),
       mm_kg: num(form.mm_kg),
+      mm_pct: num(form.mm_pct),
       agua_corporal: num(form.agua_corporal),
       gordura_visceral: num(form.gordura_visceral),
       tmb: num(form.tmb),
@@ -949,7 +955,7 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
         'dobra_tricipital', 'dobra_bicipital', 'dobra_abdominal', 'dobra_subescapular',
         'dobra_axilar_media', 'dobra_coxa', 'dobra_toracica', 'dobra_suprailiaca',
         'dobra_panturrilha', 'dobra_supraespinhal',
-        'torax_cm', 'abdomen_cm', 'panturrilha_cm',
+        'torax_cm', 'abdomen_cm', 'panturrilha_cm', 'mm_pct',
       ],
       (p) => supabase.from('peso_registros').insert(p),
     );
@@ -1055,6 +1061,10 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
               <input inputMode="decimal" placeholder="ex: 48,2" value={form.mm_kg} onChange={set('mm_kg')} />
             </div>
             <div>
+              <label className="field-label">Massa magra (%)</label>
+              <input inputMode="decimal" placeholder="ex: 63,5" value={form.mm_pct} onChange={set('mm_pct')} />
+            </div>
+            <div>
               <label className="field-label">Água corporal (%)</label>
               <input inputMode="decimal" placeholder="ex: 52" value={form.agua_corporal} onChange={set('agua_corporal')} />
             </div>
@@ -1133,6 +1143,7 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
                 <th>Quadril</th>
                 <th>% gordura</th>
                 <th>M. magra</th>
+                <th>M. magra %</th>
                 <th>Água</th>
                 <th>Visceral</th>
                 <th>Dobras</th>
@@ -1153,6 +1164,7 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
                       <td>{a.quadril_cm ? `${a.quadril_cm} cm` : '—'}</td>
                       <td>{a.pgc ? `${a.pgc}%` : '—'}</td>
                       <td>{a.mm_kg ? `${a.mm_kg} kg` : '—'}</td>
+                      <td>{a.mm_pct ? `${a.mm_pct}%` : '—'}</td>
                       <td>{a.agua_corporal ? `${a.agua_corporal}%` : '—'}</td>
                       <td>{a.gordura_visceral ?? '—'}</td>
                       <td>
@@ -1211,91 +1223,6 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
 /* ============================================================
    EXAMES LABORATORIAIS
    ============================================================ */
-const EXAMES_PARAMS = [
-  // Glicêmico
-  { key: 'glicemia_jejum',   label: 'Glicemia de jejum',            unidade: 'mg/dL',      categoria: 'Glicêmico' },
-  { key: 'hba1c',            label: 'Hemoglobina glicada (HbA1c)',  unidade: '%',          categoria: 'Glicêmico' },
-  { key: 'insulina',         label: 'Insulina',                     unidade: 'µU/mL',      categoria: 'Glicêmico' },
-
-  // Perfil lipídico
-  { key: 'colesterol_total', label: 'Colesterol total',             unidade: 'mg/dL',      categoria: 'Perfil lipídico' },
-  { key: 'hdl',              label: 'HDL',                          unidade: 'mg/dL',      categoria: 'Perfil lipídico' },
-  { key: 'ldl',              label: 'LDL',                          unidade: 'mg/dL',      categoria: 'Perfil lipídico' },
-  { key: 'vldl',             label: 'VLDL',                         unidade: 'mg/dL',      categoria: 'Perfil lipídico' },
-  { key: 'triglicerideos',   label: 'Triglicerídeos',               unidade: 'mg/dL',      categoria: 'Perfil lipídico' },
-
-  // Tireoide
-  { key: 'tsh',              label: 'TSH',                          unidade: 'µUI/mL',     categoria: 'Tireoide' },
-  { key: 't4_livre',         label: 'T4 livre',                     unidade: 'ng/dL',      categoria: 'Tireoide' },
-  { key: 't3',               label: 'T3',                           unidade: 'ng/dL',      categoria: 'Tireoide' },
-
-  // Marcadores inflamatórios
-  { key: 'ferritina',        label: 'Ferritina',                    unidade: 'ng/mL',      categoria: 'Marcadores inflamatórios' },
-  { key: 'homocisteina',     label: 'Homocisteína',                 unidade: 'µmol/L',     categoria: 'Marcadores inflamatórios' },
-  { key: 'pcr',              label: 'Proteína C reativa (PCR)',     unidade: 'mg/L',       categoria: 'Marcadores inflamatórios' },
-
-  // Vitaminas
-  { key: 'vitamina_a',       label: 'Vitamina A',                   unidade: 'µg/dL',      categoria: 'Vitaminas' },
-  { key: 'vitamina_b1',      label: 'Vitamina B1 (Tiamina)',        unidade: 'ng/mL',      categoria: 'Vitaminas' },
-  { key: 'vitamina_b2',      label: 'Vitamina B2 (Riboflavina)',    unidade: 'µg/dL',      categoria: 'Vitaminas' },
-  { key: 'vitamina_b6',      label: 'Vitamina B6 (Piridoxina)',     unidade: 'ng/mL',      categoria: 'Vitaminas' },
-  { key: 'vitamina_b12',     label: 'Vitamina B12',                 unidade: 'pg/mL',      categoria: 'Vitaminas' },
-  { key: 'acido_folico',     label: 'Ácido fólico (Vitamina B9)',   unidade: 'ng/mL',      categoria: 'Vitaminas' },
-  { key: 'vitamina_c',       label: 'Vitamina C',                   unidade: 'mg/dL',      categoria: 'Vitaminas' },
-  { key: 'vitamina_d',       label: 'Vitamina D',                   unidade: 'ng/mL',      categoria: 'Vitaminas' },
-  { key: 'vitamina_e',       label: 'Vitamina E',                   unidade: 'mg/L',       categoria: 'Vitaminas' },
-  { key: 'vitamina_k',       label: 'Vitamina K',                   unidade: 'ng/mL',      categoria: 'Vitaminas' },
-
-  // Minerais
-  { key: 'ferro_serico',     label: 'Ferro sérico',                 unidade: 'µg/dL',      categoria: 'Minerais' },
-  { key: 'calcio',           label: 'Cálcio',                       unidade: 'mg/dL',      categoria: 'Minerais' },
-  { key: 'magnesio',         label: 'Magnésio',                     unidade: 'mg/dL',      categoria: 'Minerais' },
-  { key: 'zinco',            label: 'Zinco',                        unidade: 'µg/dL',      categoria: 'Minerais' },
-  { key: 'potassio',         label: 'Potássio',                     unidade: 'mEq/L',      categoria: 'Minerais' },
-  { key: 'sodio',            label: 'Sódio',                        unidade: 'mEq/L',      categoria: 'Minerais' },
-  { key: 'fosforo',          label: 'Fósforo',                      unidade: 'mg/dL',      categoria: 'Minerais' },
-  { key: 'selenio',          label: 'Selênio',                      unidade: 'µg/L',       categoria: 'Minerais' },
-  { key: 'cobre',            label: 'Cobre',                        unidade: 'µg/dL',      categoria: 'Minerais' },
-
-  // Hemograma completo
-  { key: 'hemacias',         label: 'Hemácias',                     unidade: 'milhões/mm³', categoria: 'Hemograma completo' },
-  { key: 'hemoglobina',      label: 'Hemoglobina',                  unidade: 'g/dL',       categoria: 'Hemograma completo' },
-  { key: 'hematocrito',      label: 'Hematócrito',                  unidade: '%',          categoria: 'Hemograma completo' },
-  { key: 'vcm',              label: 'VCM',                          unidade: 'fL',         categoria: 'Hemograma completo' },
-  { key: 'hcm',              label: 'HCM',                          unidade: 'pg',         categoria: 'Hemograma completo' },
-  { key: 'chcm',             label: 'CHCM',                         unidade: 'g/dL',       categoria: 'Hemograma completo' },
-  { key: 'rdw',              label: 'RDW',                          unidade: '%',          categoria: 'Hemograma completo' },
-  { key: 'leucocitos',       label: 'Leucócitos',                   unidade: '/mm³',       categoria: 'Hemograma completo' },
-  { key: 'neutrofilos',      label: 'Neutrófilos',                  unidade: '%',          categoria: 'Hemograma completo' },
-  { key: 'linfocitos',       label: 'Linfócitos',                   unidade: '%',          categoria: 'Hemograma completo' },
-  { key: 'monocitos',        label: 'Monócitos',                    unidade: '%',          categoria: 'Hemograma completo' },
-  { key: 'eosinofilos',      label: 'Eosinófilos',                  unidade: '%',          categoria: 'Hemograma completo' },
-  { key: 'basofilos',        label: 'Basófilos',                    unidade: '%',          categoria: 'Hemograma completo' },
-  { key: 'plaquetas',        label: 'Plaquetas',                    unidade: '/mm³',       categoria: 'Hemograma completo' },
-
-  // Função hepática
-  { key: 'tgo',              label: 'TGO (AST)',                    unidade: 'U/L',        categoria: 'Função hepática' },
-  { key: 'tgp',              label: 'TGP (ALT)',                    unidade: 'U/L',        categoria: 'Função hepática' },
-  { key: 'ggt',              label: 'Gama GT',                      unidade: 'U/L',        categoria: 'Função hepática' },
-  { key: 'fosfatase_alcalina', label: 'Fosfatase alcalina',         unidade: 'U/L',        categoria: 'Função hepática' },
-  { key: 'bilirrubina_total', label: 'Bilirrubina total',           unidade: 'mg/dL',      categoria: 'Função hepática' },
-
-  // Função renal
-  { key: 'ureia',            label: 'Ureia',                        unidade: 'mg/dL',      categoria: 'Função renal' },
-  { key: 'creatinina',       label: 'Creatinina',                   unidade: 'mg/dL',      categoria: 'Função renal' },
-  { key: 'acido_urico',      label: 'Ácido úrico',                  unidade: 'mg/dL',      categoria: 'Função renal' },
-
-  // Intolerâncias
-  { key: 'lactose',          label: 'Teste de intolerância à lactose', unidade: '',         categoria: 'Intolerâncias' },
-  { key: 'gluten',           label: 'Anticorpo antitransglutaminase (glúten)', unidade: 'U/mL', categoria: 'Intolerâncias' },
-];
-
-const EXAMES_STATUS = [
-  { id: 'baixo',     label: 'Baixo',     fg: 'var(--red)',    bg: 'var(--red-soft)' },
-  { id: 'limitrofe', label: 'Limítrofe', fg: 'var(--orange)', bg: 'var(--orange-soft)' },
-  { id: 'normal',    label: 'Normal',    fg: 'var(--green)',  bg: 'var(--green-soft)' },
-  { id: 'alto',      label: 'Alto',      fg: 'var(--red)',    bg: 'var(--red-soft)' },
-];
 
 function RegistrarExames({ pacienteId, nutriId }) {
   const [historico, setHistorico] = useState([]);

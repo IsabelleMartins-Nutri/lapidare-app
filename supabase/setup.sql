@@ -594,6 +594,7 @@ alter table public.peso_registros
   add column if not exists coxa_cm     numeric(5,2),
   add column if not exists pgc         numeric(5,2),
   add column if not exists mm_kg       numeric(5,2),
+  add column if not exists mm_pct      numeric(5,2), -- massa magra em % (digitado direto, independente do kg)
   add column if not exists obs         text,
   add column if not exists pdf_url     text,
   add column if not exists agua_corporal    numeric(5,2), -- % de água corporal (bioimpedância)
@@ -1828,6 +1829,29 @@ create table if not exists public.metas_consulta (
 );
 create index if not exists metas_consulta_paciente_id_idx on public.metas_consulta(paciente_id, data);
 
+-- Biblioteca de condutas — reutilizável entre pacientes, gerenciada pela nutri.
+-- Usada no Panorama do Tratamento (cada fase marca quais condutas valem).
+create table if not exists public.condutas_biblioteca (
+  id         uuid primary key default gen_random_uuid(),
+  nutri_id   uuid not null references public.nutris(id) on delete cascade,
+  texto      text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists condutas_biblioteca_nutri_idx on public.condutas_biblioteca(nutri_id);
+
+-- Panorama do tratamento — 1 registro por paciente: pontos de atenção
+-- (sintomas/queixas) + até 5 fases do plano, pra apresentar em tela cheia
+-- na consulta de venda.
+create table if not exists public.panoramas (
+  id              uuid primary key default gen_random_uuid(),
+  paciente_id     uuid not null references public.pacientes(id) on delete cascade unique,
+  nutri_id        uuid references public.nutris(id) on delete set null,
+  pontos_atencao  jsonb not null default '[]',
+  fases           jsonb not null default '[]',
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
 -- Evolução de hábitos/sintomas relatados — a nutri escreve manualmente o
 -- que a paciente relatou sobre um item (ex: "Intestino", "Sono") a cada
 -- consulta, formando um histórico. Diferente do habit tracker (paciente
@@ -1879,6 +1903,8 @@ alter table public.ebooks_pacientes    enable row level security;
 alter table public.followup_templates  enable row level security;
 alter table public.followups           enable row level security;
 alter table public.metas_consulta      enable row level security;
+alter table public.condutas_biblioteca enable row level security;
+alter table public.panoramas           enable row level security;
 alter table public.evolucao_habitos    enable row level security;
 alter table public.suplementos         enable row level security;
 alter table public.suplementos_logs    enable row level security;
@@ -1913,6 +1939,12 @@ create policy followups_all_nutri on public.followups for all
   using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
 drop policy if exists metas_consulta_all_nutri on public.metas_consulta;
 create policy metas_consulta_all_nutri on public.metas_consulta for all
+  using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
+drop policy if exists condutas_biblioteca_all_nutri on public.condutas_biblioteca;
+create policy condutas_biblioteca_all_nutri on public.condutas_biblioteca for all
+  using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
+drop policy if exists panoramas_all_nutri on public.panoramas;
+create policy panoramas_all_nutri on public.panoramas for all
   using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
 drop policy if exists evolucao_habitos_all_nutri on public.evolucao_habitos;
 create policy evolucao_habitos_all_nutri on public.evolucao_habitos for all

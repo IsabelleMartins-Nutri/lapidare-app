@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 import { supabase } from '../../lib/supabase.js';
 import { dataBR } from '../../lib/utils.js';
 import { formatarResposta, calcularPontuacaoSecoes, faixaResultado } from '../../lib/checkinDefault.js';
+import { EXAMES_PARAMS, EXAMES_STATUS } from '../../lib/examesDefault.js';
 import GraficoBarrasDuplas from '../../components/GraficoBarrasDuplas.jsx';
 
 const TIPOS_FOTO = [
@@ -62,6 +65,10 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
   const [feedPratosCount, setFeedPratosCount] = useState(0);
   const [checkinsEnviados, setCheckinsEnviados] = useState(0);
   const [verCheckin, setVerCheckin] = useState(null);
+  const [examesLab, setExamesLab] = useState([]);
+  const [examesImagem, setExamesImagem] = useState([]);
+  const [verExameLab, setVerExameLab] = useState(null);
+  const [verExameImagem, setVerExameImagem] = useState(null);
   const [habitosRelatados, setHabitosRelatados] = useState([]);
   const [registrarHabito, setRegistrarHabito] = useState(null); // null = fechado, { item } = aberto (item pré-preenchido opcional)
 
@@ -71,7 +78,7 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
   useEffect(() => {
     let active = true;
     async function carregar() {
-      const [avRes, ftRes, ckRes, plRes, prRes, csRes, ehRes, qeRes, fpRes, ceRes] = await Promise.all([
+      const [avRes, ftRes, ckRes, plRes, prRes, csRes, ehRes, qeRes, fpRes, ceRes, elRes, eiRes] = await Promise.all([
         supabase.from('peso_registros').select('*').eq('paciente_id', pacienteId).order('data'),
         supabase.from('fotos_evolucao').select('*').eq('paciente_id', pacienteId).order('data_foto'),
         supabase.from('checkin_envios').select('id, perguntas, respostas, respondido_em, enviado_em, mostrar_pontuacao, faixas_resultado, metas_secao').eq('paciente_id', pacienteId).not('respondido_em', 'is', null).order('respondido_em'),
@@ -82,6 +89,8 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
         supabase.from('questionarios_evolucao').select('*').eq('paciente_id', pacienteId).order('data'),
         supabase.from('feed_pratos').select('id', { count: 'exact', head: true }).eq('paciente_id', pacienteId),
         supabase.from('checkin_envios').select('id', { count: 'exact', head: true }).eq('paciente_id', pacienteId),
+        supabase.from('exames_registros').select('id, data, valores, obs, pdf_url').eq('paciente_id', pacienteId).order('data'),
+        supabase.from('exames_imagem').select('id, data, titulo, texto, pdf_url').eq('paciente_id', pacienteId).order('data'),
       ]);
       if (!active) return;
       setAvaliacoes(avRes.data ?? []);
@@ -94,6 +103,8 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
       setQuestionarios(qeRes.data ?? []);
       setFeedPratosCount(fpRes.count ?? 0);
       setCheckinsEnviados(ceRes.count ?? 0);
+      setExamesLab(elRes.data ?? []);
+      setExamesImagem(eiRes.data ?? []);
 
       // pré-fetch signed URLs
       const novasUrls = {};
@@ -134,7 +145,7 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
 
   // Wrapper pra manter compat com handlers que chamam carregar() explicitamente.
   async function carregar() {
-    const [avRes, ftRes, ckRes, plRes, prRes, csRes, ehRes, qeRes, fpRes, ceRes] = await Promise.all([
+    const [avRes, ftRes, ckRes, plRes, prRes, csRes, ehRes, qeRes, fpRes, ceRes, elRes, eiRes] = await Promise.all([
       supabase.from('peso_registros').select('*').eq('paciente_id', pacienteId).order('data'),
       supabase.from('fotos_evolucao').select('*').eq('paciente_id', pacienteId).order('data_foto'),
       supabase.from('checkin_envios').select('id, perguntas, respostas, respondido_em, enviado_em, mostrar_pontuacao, faixas_resultado, metas_secao').eq('paciente_id', pacienteId).not('respondido_em', 'is', null).order('respondido_em'),
@@ -145,6 +156,8 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
       supabase.from('questionarios_evolucao').select('*').eq('paciente_id', pacienteId).order('data'),
       supabase.from('feed_pratos').select('id', { count: 'exact', head: true }).eq('paciente_id', pacienteId),
       supabase.from('checkin_envios').select('id', { count: 'exact', head: true }).eq('paciente_id', pacienteId),
+      supabase.from('exames_registros').select('id, data, valores, obs, pdf_url').eq('paciente_id', pacienteId).order('data'),
+      supabase.from('exames_imagem').select('id, data, titulo, texto, pdf_url').eq('paciente_id', pacienteId).order('data'),
     ]);
     setAvaliacoes(avRes.data ?? []);
     setFotos(ftRes.data ?? []);
@@ -156,6 +169,8 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
     setQuestionarios(qeRes.data ?? []);
     setFeedPratosCount(fpRes.count ?? 0);
     setCheckinsEnviados(ceRes.count ?? 0);
+    setExamesLab(elRes.data ?? []);
+    setExamesImagem(eiRes.data ?? []);
 
     const novasUrls = {};
     for (const f of ftRes.data ?? []) {
@@ -178,6 +193,22 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
     if (!window.confirm(`Excluir esse relato de "${h.item}"?`)) return;
     await supabase.from('evolucao_habitos').delete().eq('id', h.id);
     carregar();
+  }
+
+  // Abre a tela grande do evento clicado na timeline — cada tipo de exame
+  // vem com o registro ANTERIOR (mesmo tipo) pra comparação, quando existir.
+  function abrirEvento(ev) {
+    if (ev.checkinId) return setVerCheckin(ev.checkin);
+    if (ev.exameLabId) {
+      const idx = examesLab.findIndex(e => e.id === ev.exameLabId);
+      if (idx === -1) return;
+      return setVerExameLab({ registro: examesLab[idx], anterior: examesLab[idx - 1] ?? null });
+    }
+    if (ev.exameImagemId) {
+      const idx = examesImagem.findIndex(e => e.id === ev.exameImagemId);
+      if (idx === -1) return;
+      return setVerExameImagem({ registro: examesImagem[idx], anterior: examesImagem[idx - 1] ?? null });
+    }
   }
 
   // Agrupa os relatos por item (nome normalizado — trim + minúsculo evita
@@ -262,6 +293,8 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
   const deltaPeso = delta('kg');
   const deltaPgc = delta('pgc');
   const deltaMassaMagra = delta('mm_kg');
+  const deltaAguaCorporal = delta('agua_corporal');
+  const deltaGorduraVisceral = delta('gordura_visceral');
 
   // Soma da perda (primeira - última) de todas as circunferências que tiverem
   // as duas medições — cada campo ausente é simplesmente ignorado na soma.
@@ -336,8 +369,27 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
         desc: `Tipo: ${c.tipo}`,
       });
     }
+    for (const e of examesLab) {
+      const n = Object.keys(e.valores ?? {}).length;
+      lst.push({
+        data: new Date(e.data + 'T12:00:00').toISOString(),
+        tipo: 'exame_lab', icon: 'flask', cor: 'var(--blue, #2563a8)',
+        titulo: 'Exames laboratoriais',
+        desc: n > 0 ? `${n} parâmetro${n === 1 ? '' : 's'} preenchido${n === 1 ? '' : 's'}` : 'PDF anexado',
+        exameLabId: e.id,
+      });
+    }
+    for (const e of examesImagem) {
+      lst.push({
+        data: new Date(e.data + 'T12:00:00').toISOString(),
+        tipo: 'exame_imagem', icon: 'radioactive', cor: 'var(--blue, #2563a8)',
+        titulo: `Exame de imagem · ${e.titulo}`,
+        desc: e.texto ?? 'Laudo anexado',
+        exameImagemId: e.id,
+      });
+    }
     return lst.sort((a, b) => b.data.localeCompare(a.data));  // mais recente primeiro
-  }, [avaliacoes, fotos, checkins, planos, prescricoes, consultas]);
+  }, [avaliacoes, fotos, checkins, planos, prescricoes, consultas, examesLab, examesImagem]);
 
   // ─── Renders auxiliares ───
   function HighlightCard({ titulo, atual, delta, unidade, melhorMenor = true }) {
@@ -407,6 +459,8 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
         avaliacoes={avaliacoes}
         deltaPeso={deltaPeso}
         deltaMassaMagra={deltaMassaMagra}
+        deltaAguaCorporal={deltaAguaCorporal}
+        deltaGorduraVisceral={deltaGorduraVisceral}
         deltaPgc={deltaPgc}
         somaCircunferencias={somaCircunferencias}
         totalDias={totalDias}
@@ -417,6 +471,8 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
         feedPratosCount={feedPratosCount}
         checkinsRespondidos={checkins.length}
         checkinsEnviados={checkinsEnviados}
+        examesLab={examesLab}
+        examesImagem={examesImagem}
         gruposHabitos={gruposHabitos}
         onClose={() => setApresentacao(false)}
       />
@@ -750,9 +806,9 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
               className="card"
               style={{
                 padding: '12px 14px', marginBottom: 0,
-                cursor: ev.checkinId ? 'pointer' : 'default',
+                cursor: (ev.checkinId || ev.exameLabId || ev.exameImagemId) ? 'pointer' : 'default',
               }}
-              onClick={() => ev.checkinId && setVerCheckin(ev.checkin)}>
+              onClick={() => abrirEvento(ev)}>
               <div style={{
                 fontSize: 10, color: ev.cor, letterSpacing: '.5px',
                 textTransform: 'uppercase', fontWeight: 600, marginBottom: 4,
@@ -766,6 +822,11 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
               {ev.checkinId && (
                 <div style={{ fontSize: 10, color: 'var(--gold-deep, #a08456)', marginTop: 4 }}>
                   toque para ver respostas →
+                </div>
+              )}
+              {(ev.exameLabId || ev.exameImagemId) && (
+                <div style={{ fontSize: 10, color: 'var(--gold-deep, #a08456)', marginTop: 4 }}>
+                  toque para ver em tela grande →
                 </div>
               )}
             </div>
@@ -804,6 +865,16 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
 
       {verCheckin && (
         <VerCheckinModal envio={verCheckin} onClose={() => setVerCheckin(null)} />
+      )}
+
+      {verExameLab && (
+        <VerExameLabModal registro={verExameLab.registro} anterior={verExameLab.anterior}
+          onClose={() => setVerExameLab(null)} />
+      )}
+
+      {verExameImagem && (
+        <VerExameImagemModal registro={verExameImagem.registro} anterior={verExameImagem.anterior}
+          onClose={() => setVerExameImagem(null)} />
       )}
     </>
   );
@@ -1172,10 +1243,66 @@ function ModalRegistrarHabito({ pacienteId, nutriId, itemInicial, itensExistente
 /* ============================================================
    MODO APRESENTAÇÃO (fullscreen pra consulta)
    ============================================================ */
-function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaMassaMagra, deltaPgc, somaCircunferencias, totalDias, comparativos, urls, questionariosPorTipo, qUrls, feedPratosCount, checkinsRespondidos, checkinsEnviados, gruposHabitos, onClose }) {
+function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaMassaMagra, deltaPgc, deltaAguaCorporal, deltaGorduraVisceral, somaCircunferencias, totalDias, comparativos, urls, questionariosPorTipo, qUrls, feedPratosCount, checkinsRespondidos, checkinsEnviados, examesLab, examesImagem, gruposHabitos, onClose }) {
   const primeira = avaliacoes[0];
   const ultima   = avaliacoes[avaliacoes.length - 1];
   const questionariosComparaveis = questionariosPorTipo.filter(g => g.itens.length >= 2);
+
+  // Exames laboratoriais que mudaram entre o primeiro e o último registro —
+  // só os parâmetros que a nutri realmente preencheu (ignora os ~70 vazios).
+  const primeiroExameLab = examesLab[0];
+  const ultimoExameLab = examesLab[examesLab.length - 1];
+  const examesLabComparaveis = (primeiroExameLab && ultimoExameLab && primeiroExameLab.id !== ultimoExameLab.id)
+    ? EXAMES_PARAMS
+      .filter(p => primeiroExameLab.valores?.[p.key]?.valor != null && ultimoExameLab.valores?.[p.key]?.valor != null)
+      .map(p => {
+        const de = primeiroExameLab.valores[p.key];
+        const para = ultimoExameLab.valores[p.key];
+        const cor = EXAMES_STATUS.find(s => s.id === para.status);
+        return { ...p, de: de.valor, para: para.valor, delta: deltaExame(para.valor, de.valor), cor };
+      })
+    : [];
+
+  // Exame de imagem mais antigo x mais recente (só se houver pelo menos 2)
+  const examesImagemComparaveis = examesImagem.length >= 2
+    ? { primeiro: examesImagem[0], ultimo: examesImagem[examesImagem.length - 1] }
+    : null;
+  const conteudoRef = useRef(null);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+
+  async function gerarPdf() {
+    if (!conteudoRef.current) return;
+    setGerandoPdf(true);
+    try {
+      const canvas = await html2canvas(conteudoRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true,
+      });
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      while (heightLeft > 0) {
+        position -= pageHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+      pdf.save(`Evolucao - ${paciente?.nome ?? 'paciente'}.pdf`);
+    } catch (e) {
+      alert('Erro ao gerar PDF: ' + e.message);
+    } finally {
+      setGerandoPdf(false);
+    }
+  }
+
   return (
     <div style={{
       position: 'fixed', inset: 0,
@@ -1184,18 +1311,27 @@ function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaMassaMagra, de
       overflow: 'auto',
       padding: '40px 32px',
     }}>
-      <button onClick={onClose} style={{
-        position: 'fixed', top: 20, right: 20,
-        background: 'var(--dark)', color: 'var(--white)',
-        border: 'none', borderRadius: 8, padding: '8px 14px',
-        cursor: 'pointer', fontSize: 13, fontFamily: 'var(--font-sans)',
-        display: 'inline-flex', alignItems: 'center', gap: 6,
-        zIndex: 201,
-      }}>
-        <i className="ti ti-x" aria-hidden="true"></i> Sair (ESC)
-      </button>
+      <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 201, display: 'flex', gap: 8 }}>
+        <button onClick={gerarPdf} disabled={gerandoPdf} style={{
+          background: 'var(--white)', color: 'var(--dark)',
+          border: '0.5px solid var(--border)', borderRadius: 8, padding: '8px 14px',
+          cursor: gerandoPdf ? 'default' : 'pointer', fontSize: 13, fontFamily: 'var(--font-sans)',
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          opacity: gerandoPdf ? .7 : 1,
+        }}>
+          <i className="ti ti-file-download" aria-hidden="true"></i> {gerandoPdf ? 'Gerando PDF...' : 'Gerar PDF'}
+        </button>
+        <button onClick={onClose} style={{
+          background: 'var(--dark)', color: 'var(--white)',
+          border: 'none', borderRadius: 8, padding: '8px 14px',
+          cursor: 'pointer', fontSize: 13, fontFamily: 'var(--font-sans)',
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+        }}>
+          <i className="ti ti-x" aria-hidden="true"></i> Sair (ESC)
+        </button>
+      </div>
 
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+      <div ref={conteudoRef} style={{ maxWidth: 1100, margin: '0 auto' }}>
         <div style={{
           fontSize: 12, letterSpacing: '.22em', textTransform: 'uppercase',
           color: 'var(--gold-deep, #a08456)', marginBottom: 8,
@@ -1229,6 +1365,8 @@ function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaMassaMagra, de
             { label: 'Peso',        atual: ultima?.kg,        delta: deltaPeso,       un: 'kg', melhorMenor: true },
             { label: '% gordura',   atual: ultima?.pgc,       delta: deltaPgc,        un: '%',  melhorMenor: true },
             { label: 'Massa magra', atual: ultima?.mm_kg,     delta: deltaMassaMagra, un: 'kg', melhorMenor: false },
+            { label: 'Água corporal', atual: ultima?.agua_corporal, delta: deltaAguaCorporal,   un: '%', melhorMenor: false },
+            { label: 'Gordura visceral', atual: ultima?.gordura_visceral, delta: deltaGorduraVisceral, un: '', melhorMenor: true },
           ].map((s, i) => {
             if (!s.atual) return null;
             const corDelta = s.delta
@@ -1320,7 +1458,7 @@ function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaMassaMagra, de
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
                         {x.foto && urls[x.foto.id] ? (
-                          <img src={urls[x.foto.id]} alt={x.label}
+                          <img src={urls[x.foto.id]} alt={x.label} crossOrigin="anonymous"
                             style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (
                           <span style={{ color: 'var(--text3)', fontSize: 14 }}>Sem foto</span>
@@ -1371,7 +1509,7 @@ function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaMassaMagra, de
                           display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
                         }}>
                           {qUrls[x.item.id] ? (
-                            <img src={qUrls[x.item.id]} alt={x.label}
+                            <img src={qUrls[x.item.id]} alt={x.label} crossOrigin="anonymous"
                               style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                           ) : (
                             <span style={{ color: 'var(--text3)', fontSize: 14 }}>Sem imagem</span>
@@ -1386,6 +1524,85 @@ function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaMassaMagra, de
                 </div>
               );
             })}
+          </>
+        )}
+
+        {/* Exames — evolução (só os parâmetros preenchidos, laboratoriais + imagem) */}
+        {(examesLabComparaveis.length > 0 || examesImagemComparaveis) && (
+          <>
+            <h2 style={{
+              fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 500,
+              color: 'var(--dark)', marginBottom: 18,
+            }}>
+              Exames — evolução
+            </h2>
+
+            {examesLabComparaveis.length > 0 && (
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                gap: 14, marginBottom: examesImagemComparaveis ? 28 : 0,
+              }}>
+                {examesLabComparaveis.map(p => (
+                  <div key={p.key} style={{
+                    background: 'var(--white)', border: '0.5px solid var(--border)',
+                    borderRadius: 14, padding: '18px 20px',
+                  }}>
+                    <div style={{
+                      fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase',
+                      color: 'var(--text3)', marginBottom: 8, fontWeight: 500,
+                    }}>{p.label}</div>
+                    <div style={{
+                      fontFamily: 'var(--font-serif)', fontSize: 32, fontWeight: 600,
+                      color: p.cor ? p.cor.fg : 'var(--dark)', lineHeight: 1,
+                    }}>
+                      {p.para}
+                      <span style={{ fontSize: 15, color: 'var(--text3)', marginLeft: 4 }}>{p.unidade}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 8 }}>
+                      {p.de}{p.unidade} desde {dataBR(primeiroExameLab.data)}
+                      {p.delta != null && p.delta !== 0 && (
+                        <span style={{ marginLeft: 4 }}>
+                          ({p.delta > 0 ? '+' : ''}{p.delta.toFixed(2).replace(/0+$/, '').replace(/\.$/, '').replace('.', ',')})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {examesImagemComparaveis && (
+              <div>
+                <div style={{
+                  fontSize: 13, fontWeight: 600, letterSpacing: '.4px', textTransform: 'uppercase',
+                  color: 'var(--gold-deep, #a08456)', marginBottom: 14,
+                }}>
+                  Exames de imagem
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                  {[
+                    { item: examesImagemComparaveis.primeiro, label: 'Antes' },
+                    { item: examesImagemComparaveis.ultimo, label: 'Depois' },
+                  ].map((x, i) => (
+                    <div key={i} style={{
+                      background: 'var(--white)', border: '0.5px solid var(--border)',
+                      borderRadius: 14, padding: '18px 20px',
+                    }}>
+                      <div style={{
+                        fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase',
+                        color: 'var(--text3)', marginBottom: 8, fontWeight: 500,
+                      }}>{x.label} · {dataBR(x.item.data)}</div>
+                      <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--dark)', marginBottom: 6 }}>
+                        {x.item.titulo}
+                      </div>
+                      <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.5 }}>
+                        {x.item.texto ?? 'Sem laudo digitado.'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -1523,7 +1740,127 @@ function VerCheckinModal({ envio, onClose }) {
   );
 }
 
-function ModalShell({ title, subtitle, children, onClose, large }) {
+/* ============================================================
+   VER EXAME LABORATORIAL EM TELA GRANDE (com comparação c/ anterior)
+   ============================================================ */
+function deltaExame(atual, anteriorValor) {
+  if (atual == null || anteriorValor == null) return null;
+  const a = parseFloat(String(atual).replace(',', '.'));
+  const b = parseFloat(String(anteriorValor).replace(',', '.'));
+  if (Number.isNaN(a) || Number.isNaN(b)) return null;
+  return a - b;
+}
+
+function VerExameLabModal({ registro, anterior, onClose }) {
+  const paramsPreenchidos = EXAMES_PARAMS.filter(p => registro.valores?.[p.key]?.valor != null);
+  return (
+    <ModalShell title="Exames laboratoriais"
+      subtitle={`Coleta em ${dataBR(registro.data)}${anterior ? ` · comparado com ${dataBR(anterior.data)}` : ''}`}
+      onClose={onClose} wide>
+      {paramsPreenchidos.length === 0 ? (
+        <div style={{ padding: 20, textAlign: 'center', color: 'var(--text3)' }}>
+          Nenhum parâmetro digitado nesse registro{registro.pdf_url ? ' — só o PDF anexado.' : '.'}
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Parâmetro</th>
+                <th>Resultado</th>
+                {anterior && <th>Anterior ({dataBR(anterior.data)})</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {paramsPreenchidos.map(p => {
+                const v = registro.valores[p.key];
+                const vAnt = anterior?.valores?.[p.key];
+                const cor = EXAMES_STATUS.find(s => s.id === v.status);
+                const delta = vAnt ? deltaExame(v.valor, vAnt.valor) : null;
+                return (
+                  <tr key={p.key}>
+                    <td>{p.label} <span style={{ color: 'var(--text3)', fontSize: 11 }}>({p.unidade})</span></td>
+                    <td>
+                      <span style={{
+                        color: cor ? cor.fg : 'inherit',
+                        fontWeight: cor && cor.id !== 'normal' ? 600 : 400, fontSize: 15,
+                      }}>
+                        {v.valor}
+                      </span>
+                      {cor && (
+                        <span className="pill" style={{ marginLeft: 8, background: cor.bg, color: cor.fg, fontSize: 10 }}>
+                          {cor.label}
+                        </span>
+                      )}
+                    </td>
+                    {anterior && (
+                      <td style={{ color: 'var(--text3)' }}>
+                        {vAnt?.valor != null ? (
+                          <>
+                            {vAnt.valor}
+                            {delta != null && delta !== 0 && (
+                              <span style={{ marginLeft: 6, fontSize: 11 }}>
+                                ({delta > 0 ? '+' : ''}{delta.toFixed(2).replace(/0+$/, '').replace(/\.$/, '').replace('.', ',')})
+                              </span>
+                            )}
+                          </>
+                        ) : '—'}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {registro.obs && (
+        <div style={{ marginTop: 14, fontSize: 13, color: 'var(--text2)' }}>
+          <strong>Observação:</strong> {registro.obs}
+        </div>
+      )}
+      {registro.pdf_url && (
+        <div style={{ marginTop: 10 }}>
+          <a href={registro.pdf_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--gold-deep)', fontSize: 13 }}>
+            <i className="ti ti-file-download" aria-hidden="true"></i> Abrir PDF do laboratório
+          </a>
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+        <button className="btn-outline" onClick={onClose}>Fechar</button>
+      </div>
+    </ModalShell>
+  );
+}
+
+/* ============================================================
+   VER EXAME DE IMAGEM EM TELA GRANDE
+   ============================================================ */
+function VerExameImagemModal({ registro, onClose }) {
+  return (
+    <ModalShell title={registro.titulo} subtitle={dataBR(registro.data)} onClose={onClose} wide>
+      {registro.texto ? (
+        <div style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--dark)', whiteSpace: 'pre-wrap' }}>
+          {registro.texto}
+        </div>
+      ) : (
+        <div style={{ color: 'var(--text3)', fontSize: 13 }}>Sem laudo digitado — veja o PDF anexado.</div>
+      )}
+      {registro.pdf_url && (
+        <div style={{ marginTop: 16 }}>
+          <a href={registro.pdf_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--gold-deep)', fontSize: 13 }}>
+            <i className="ti ti-file-download" aria-hidden="true"></i> Abrir PDF do laudo
+          </a>
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+        <button className="btn-outline" onClick={onClose}>Fechar</button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function ModalShell({ title, subtitle, children, onClose, large, wide }) {
   return (
     <div style={{
       position: 'fixed', inset: 0,
@@ -1532,7 +1869,7 @@ function ModalShell({ title, subtitle, children, onClose, large }) {
     }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{
         background: 'var(--white)', borderRadius: 12, padding: 22,
-        width: large ? 600 : 460, maxWidth: '92vw',
+        width: wide ? 920 : (large ? 600 : 460), maxWidth: '92vw',
         maxHeight: '92vh', overflowY: 'auto',
         border: '0.5px solid var(--border)',
       }}>
