@@ -30,6 +30,7 @@ import BeneficiosPaciente from './app/paciente/Beneficios.jsx';
 import Previsibilidade from './app/nutri/Previsibilidade.jsx';
 import Financeiro from './app/nutri/Financeiro.jsx';
 import Biblioteca from './app/nutri/Biblioteca.jsx';
+import Receitas from './app/nutri/Receitas.jsx';
 import Personalizacao from './app/nutri/Personalizacao.jsx';
 
 import Inicio from './app/paciente/Inicio.jsx';
@@ -41,6 +42,7 @@ import PrescricoesPaciente from './app/paciente/Prescricoes.jsx';
 import ChatPaciente from './app/paciente/Chat.jsx';
 import Checkin from './app/paciente/Checkin.jsx';
 import EbooksPaciente from './app/paciente/Ebooks.jsx';
+import ReceitasPaciente from './app/paciente/Receitas.jsx';
 import SuplementosPaciente from './app/paciente/Suplementos.jsx';
 import HabitosPaciente from './app/paciente/Habitos.jsx';
 
@@ -79,6 +81,7 @@ export default function App() {
             <Route path="/nutri/previsibilidade" element={<Previsibilidade />} />
             <Route path="/nutri/financeiro" element={<Financeiro />} />
             <Route path="/nutri/biblioteca" element={<Biblioteca />} />
+            <Route path="/nutri/receitas" element={<Receitas />} />
             <Route path="/nutri/personalizacao" element={<Personalizacao />} />
           </Route>
 
@@ -93,6 +96,7 @@ export default function App() {
             <Route path="/paciente/prescricoes" element={<PrescricoesPaciente />} />
             <Route path="/paciente/chat" element={<ChatPaciente />} />
             <Route path="/paciente/ebooks" element={<EbooksPaciente />} />
+            <Route path="/paciente/receitas" element={<ReceitasPaciente />} />
             <Route path="/paciente/suplementos" element={<SuplementosPaciente />} />
             <Route path="/paciente/habitos" element={<HabitosPaciente />} />
             <Route path="/paciente/beneficios" element={<BeneficiosPaciente />} />

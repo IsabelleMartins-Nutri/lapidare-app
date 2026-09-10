@@ -19,6 +19,7 @@ const NAV_CONFIG = [
       { id: 'feed',         path: '/nutri/feed',         label: 'Feed de pratos',      icon: 'camera' },
       { id: 'prescricoes',  path: '/nutri/prescricoes',  label: 'Prescrições',         icon: 'file-text' },
       { id: 'biblioteca',   path: '/nutri/biblioteca',   label: 'Biblioteca',          icon: 'book-2' },
+      { id: 'receitas',     path: '/nutri/receitas',     label: 'Receitas',            icon: 'tools-kitchen-2' },
       { id: 'checkins',     path: '/nutri/checkins',     label: 'Questionários',       icon: 'clipboard-list' },
       { id: 'cadastrar',    path: '/nutri/cadastrar',    label: 'Cadastrar paciente',  icon: 'user-plus' },
     ],

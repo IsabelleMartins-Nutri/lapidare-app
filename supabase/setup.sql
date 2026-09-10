@@ -1783,6 +1783,30 @@ create table if not exists public.ebooks_pacientes (
 create index if not exists ebooks_pacientes_paciente_idx on public.ebooks_pacientes(paciente_id);
 create index if not exists ebooks_pacientes_ebook_idx    on public.ebooks_pacientes(ebook_id);
 
+-- Receitas — biblioteca de receitas da nutri (nome, ingredientes, modo de
+-- preparo e foto de capa opcional), pra organizar e reaproveitar em planos.
+create table if not exists public.receitas (
+  id            uuid primary key default gen_random_uuid(),
+  nutri_id      uuid not null references public.nutris(id) on delete cascade,
+  nome          text not null,
+  ingredientes  jsonb not null default '[]',
+  modo_preparo  text,
+  storage_path  text,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+create index if not exists receitas_nutri_idx on public.receitas(nutri_id, created_at desc);
+
+create table if not exists public.receitas_pacientes (
+  id          uuid primary key default gen_random_uuid(),
+  receita_id  uuid not null references public.receitas(id) on delete cascade,
+  paciente_id uuid not null references public.pacientes(id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  unique (receita_id, paciente_id)
+);
+create index if not exists receitas_pacientes_paciente_idx on public.receitas_pacientes(paciente_id);
+create index if not exists receitas_pacientes_receita_idx  on public.receitas_pacientes(receita_id);
+
 
 -- 10.3 Follow-ups (anotações da nutri) -------------------------
 create table if not exists public.followup_templates (
@@ -1908,6 +1932,30 @@ alter table public.panoramas           enable row level security;
 alter table public.evolucao_habitos    enable row level security;
 alter table public.suplementos         enable row level security;
 alter table public.suplementos_logs    enable row level security;
+alter table public.receitas            enable row level security;
+alter table public.receitas_pacientes  enable row level security;
+
+-- receitas: nutri gerencia as próprias; paciente vê as que foram atribuídas a ela
+drop policy if exists receitas_all_nutri on public.receitas;
+drop policy if exists receitas_select on public.receitas;
+create policy receitas_select on public.receitas for select using (
+  nutri_id = auth.uid()
+  or exists (select 1 from public.receitas_pacientes rp where rp.receita_id = id and rp.paciente_id = auth.uid())
+);
+drop policy if exists receitas_write_nutri on public.receitas;
+create policy receitas_write_nutri on public.receitas for all
+  using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
+
+-- receitas_pacientes
+drop policy if exists receitas_pacientes_select on public.receitas_pacientes;
+create policy receitas_pacientes_select on public.receitas_pacientes for select using (
+  paciente_id = auth.uid()
+  or exists (select 1 from public.receitas r where r.id = receita_id and r.nutri_id = auth.uid())
+);
+drop policy if exists receitas_pacientes_write_nutri on public.receitas_pacientes;
+create policy receitas_pacientes_write_nutri on public.receitas_pacientes for all
+  using (exists (select 1 from public.receitas r where r.id = receita_id and r.nutri_id = auth.uid()))
+  with check (exists (select 1 from public.receitas r where r.id = receita_id and r.nutri_id = auth.uid()));
 
 -- ebooks
 drop policy if exists ebooks_select on public.ebooks;
@@ -2026,6 +2074,33 @@ create policy ebooks_storage_insert on storage.objects for insert with check (
 drop policy if exists ebooks_storage_delete on storage.objects;
 create policy ebooks_storage_delete on storage.objects for delete using (
   bucket_id = 'ebooks' and split_part(name, '/', 1) = auth.uid()::text
+);
+
+
+-- 10.6b Bucket de receitas (foto de capa) + policies — 100% privado da nutri
+insert into storage.buckets (id, name, public)
+values ('receitas', 'receitas', false)
+on conflict (id) do nothing;
+
+drop policy if exists receitas_storage_select on storage.objects;
+create policy receitas_storage_select on storage.objects for select using (
+  bucket_id = 'receitas'
+  and (
+    split_part(name, '/', 1) = auth.uid()::text
+    or exists (
+      select 1 from public.receitas r
+      join public.receitas_pacientes rp on rp.receita_id = r.id
+      where r.storage_path = name and rp.paciente_id = auth.uid()
+    )
+  )
+);
+drop policy if exists receitas_storage_insert on storage.objects;
+create policy receitas_storage_insert on storage.objects for insert with check (
+  bucket_id = 'receitas' and split_part(name, '/', 1) = auth.uid()::text
+);
+drop policy if exists receitas_storage_delete on storage.objects;
+create policy receitas_storage_delete on storage.objects for delete using (
+  bucket_id = 'receitas' and split_part(name, '/', 1) = auth.uid()::text
 );
 
 
