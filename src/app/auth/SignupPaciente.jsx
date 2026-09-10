@@ -21,6 +21,7 @@ export default function SignupPaciente() {
   const [senha, setSenha] = useState('');
   const [confirmaSenha, setConfirmaSenha] = useState('');
   const [objetivo, setObjetivo] = useState('Emagrecimento');
+  const [objetivoDetalhe, setObjetivoDetalhe] = useState(''); // vem do pendente, não é editável aqui
   const [tipoPlano, setTipoPlano] = useState('trimestral');
   const [modalidade, setModalidade] = useState('Online');
   const [busy, setBusy] = useState(false);
@@ -53,6 +54,7 @@ export default function SignupPaciente() {
           if (p.nascimento) setNascimento(p.nascimento);
           if (p.sexo) setSexo(p.sexo);
           if (p.objetivo) setObjetivo(p.objetivo);
+          if (p.objetivo_detalhe) setObjetivoDetalhe(p.objetivo_detalhe);
           if (p.tipo_plano) setTipoPlano(p.tipo_plano);
           if (p.modalidade) setModalidade(p.modalidade);
           setNutriNome(p.nutri_nome ?? '');
@@ -106,6 +108,7 @@ export default function SignupPaciente() {
           nascimento: nascimento || null,
           sexo,
           objetivo,
+          objetivo_detalhe: objetivoDetalhe || null,
           tipo_plano: tipoPlano,
           modalidade,
         },

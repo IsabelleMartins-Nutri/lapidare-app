@@ -8,8 +8,12 @@ import {
   validarTemplate,
   proximaDataAgendamento,
   labelFrequencia,
+  calcularPontuacaoSecoes,
+  faixaResultado,
 } from '../../lib/checkinDefault.js';
+import { RASTREAMENTO_METABOLICO, QFA_PONTUACAO } from '../../lib/questionariosPontuacao.js';
 import CheckinForm from '../../components/CheckinForm.jsx';
+import GraficoBarrasDuplas from '../../components/GraficoBarrasDuplas.jsx';
 import DicaJSON from '../../components/DicaJSON.jsx';
 
 export default function Checkins() {
@@ -39,7 +43,7 @@ export default function Checkins() {
       // (PacientePerfil → Atendimento) — esses ficam só lá, não aparecem
       // misturados com os check-ins semanais/pré-consulta aqui.
       supabase.from('checkin_envios')
-        .select('id, paciente_id, perguntas, enviado_em, respondido_em, respostas, lembrete_enviado_em, paciente:pacientes(id, nome)')
+        .select('id, paciente_id, perguntas, enviado_em, respondido_em, respostas, lembrete_enviado_em, mostrar_pontuacao, faixas_resultado, metas_secao, paciente:pacientes(id, nome)')
         .eq('nutri_id', user.id)
         .neq('tipo', 'atendimento')
         .order('enviado_em', { ascending: false }),
@@ -106,6 +110,9 @@ export default function Checkins() {
       nome: template.nome ?? 'Questionário',
       tipo: template.tipo === 'pre_consulta' ? 'pre_consulta' : 'recorrente',
       perguntas: template.perguntas,
+      mostrar_pontuacao: template.mostrar_pontuacao ?? false,
+      faixas_resultado: template.faixas_resultado ?? null,
+      metas_secao: template.metas_secao ?? null,
     });
     if (error) return mostraToast('Erro: ' + error.message);
     mostraToast(`Enviado para ${paciente.nome.split(' ')[0]}: ${template.nome}`);
@@ -133,6 +140,9 @@ export default function Checkins() {
       nome: template.nome ?? 'Questionário',
       tipo: tipoEnvio,
       perguntas: template.perguntas,
+      mostrar_pontuacao: template.mostrar_pontuacao ?? false,
+      faixas_resultado: template.faixas_resultado ?? null,
+      metas_secao: template.metas_secao ?? null,
     }));
     const { error } = await supabase.from('checkin_envios').insert(linhas);
     if (error) return mostraToast('Erro: ' + error.message);
@@ -629,7 +639,13 @@ function TemplatesTab({ templates, pacientes, nutriId, onRecarregar, mostraToast
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12, gap: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12, gap: 6, flexWrap: 'wrap' }}>
+        <button className="btn-outline" onClick={() => onEditar({ modo: 'novo', preencher: RASTREAMENTO_METABOLICO })}>
+          <i className="ti ti-stethoscope" aria-hidden="true"></i> Usar Rastreamento metabólico
+        </button>
+        <button className="btn-outline" onClick={() => onEditar({ modo: 'novo', preencher: QFA_PONTUACAO })}>
+          <i className="ti ti-salad" aria-hidden="true"></i> Usar Frequência alimentar
+        </button>
         <button className="btn-outline" onClick={() => onEditar({ modo: 'importar' })}>
           <i className="ti ti-upload" aria-hidden="true"></i> Importar JSON
         </button>
@@ -644,7 +660,8 @@ function TemplatesTab({ templates, pacientes, nutriId, onRecarregar, mostraToast
           <div className="empty-title">Sem templates ainda</div>
           <div className="empty-sub">
             Comece com o <strong>template Lapidare</strong> (14 perguntas — bem-estar, alimentação,
-            hábitos, ciclo, intestino e espaço livre) ou crie um do zero / importe JSON.
+            hábitos, ciclo, intestino e espaço livre), com o <strong>Rastreamento metabólico</strong> ou
+            <strong> Frequência alimentar</strong> (com pontuação por seção), ou crie um do zero / importe JSON.
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: 6 }}>
             <button className="btn-outline" onClick={() => onEditar({ modo: 'importar' })}>
@@ -652,6 +669,12 @@ function TemplatesTab({ templates, pacientes, nutriId, onRecarregar, mostraToast
             </button>
             <button className="btn-outline" onClick={() => onEditar({ modo: 'novo' })}>
               <i className="ti ti-plus" aria-hidden="true"></i> Em branco
+            </button>
+            <button className="btn-outline" onClick={() => onEditar({ modo: 'novo', preencher: RASTREAMENTO_METABOLICO })}>
+              <i className="ti ti-stethoscope" aria-hidden="true"></i> Rastreamento metabólico
+            </button>
+            <button className="btn-outline" onClick={() => onEditar({ modo: 'novo', preencher: QFA_PONTUACAO })}>
+              <i className="ti ti-salad" aria-hidden="true"></i> Frequência alimentar
             </button>
             <button className="btn" onClick={criarPadraoLapidare}>
               <i className="ti ti-sparkles" aria-hidden="true"></i> Usar template Lapidare
@@ -738,7 +761,12 @@ function TemplateEditor({ template, nutriId, pacientes, onClose, onSaved }) {
   const isNovo = template?.modo === 'novo';
   const isEdit = !isImportar && !isNovo && template?.id;
 
-  const [nome, setNome] = useState(isEdit ? template.nome : (isImportar ? '' : TEMPLATE_PADRAO.nome));
+  // template.preencher: quando vem de um botão "usar este modelo" (ex: Rastreamento
+  // Metabólico, Frequência Alimentar), pré-preenche o editor com esse modelo
+  // em vez do TEMPLATE_PADRAO em branco.
+  const modelo = template?.preencher ?? TEMPLATE_PADRAO;
+
+  const [nome, setNome] = useState(isEdit ? template.nome : (isImportar ? '' : modelo.nome));
   const [paciente, setPaciente] = useState(isEdit ? (template.paciente_id ?? '') : '');
   // Tipo do template: recorrente (envio manual) ou pre_consulta (auto-envio no cadastro).
   // Antes ficava hardcoded 'recorrente' — não tinha jeito de criar pré-consulta.
@@ -746,8 +774,11 @@ function TemplateEditor({ template, nutriId, pacientes, onClose, onSaved }) {
   const [jsonText, setJsonText] = useState(isImportar
     ? ''
     : JSON.stringify({
-        nome: isEdit ? template.nome : TEMPLATE_PADRAO.nome,
-        perguntas: isEdit ? template.perguntas : TEMPLATE_PADRAO.perguntas,
+        nome: isEdit ? template.nome : modelo.nome,
+        perguntas: isEdit ? template.perguntas : modelo.perguntas,
+        mostrar_pontuacao: isEdit ? (template.mostrar_pontuacao || undefined) : (modelo.mostrar_pontuacao || undefined),
+        faixas_resultado: isEdit ? (template.faixas_resultado ?? undefined) : (modelo.faixas_resultado ?? undefined),
+        metas_secao: isEdit ? (template.metas_secao ?? undefined) : (modelo.metas_secao ?? undefined),
       }, null, 2)
   );
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -777,6 +808,9 @@ function TemplateEditor({ template, nutriId, pacientes, onClose, onSaved }) {
       paciente_id: paciente || null,
       nome: nome.trim() || obj.nome,
       perguntas: obj.perguntas,
+      mostrar_pontuacao: obj.mostrar_pontuacao ?? false,
+      faixas_resultado: obj.faixas_resultado ?? null,
+      metas_secao: obj.metas_secao ?? null,
       tipo,
       updated_at: new Date().toISOString(),
     };
@@ -821,7 +855,13 @@ function TemplateEditor({ template, nutriId, pacientes, onClose, onSaved }) {
 
       <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6, lineHeight: 1.5 }}>
         Cada pergunta precisa de: <code>id</code>, <code>secao</code>, <code>tipo</code>, <code>pergunta</code>.
-        Tipos válidos: emoji_scale, slider, single, multi, habitos, texto.
+        Tipos válidos: emoji_scale, slider, single, multi, habitos, texto, <code>pontuacao</code> (opções com peso
+        numérico, tipo emoji_scale mas sem emoji — usado em questionários com resultado somado).
+        <br />
+        Campos opcionais no nível do template (fora de cada pergunta): <code>mostrar_pontuacao</code> (true/false —
+        soma os pontos por seção e no total), <code>faixas_resultado</code> (lista de <code>{'{ate, texto}'}</code> —
+        o texto da conclusão conforme o total de pontos), <code>metas_secao</code> (mapa <code>{'{secao: numero}'}</code> —
+        meta de referência por seção, usado no gráfico Recomendado x Consumido).
       </div>
       <DicaJSON
         exemploPrompt='gera um JSON de check-in semanal pra nutricionista acompanhar a paciente, com perguntas sobre humor (emoji_scale), aderência ao plano (slider 0-10), dificuldades (texto), hábitos da semana (multi). Estrutura: { "nome": "Check-in semanal", "perguntas": [{ "id": "...", "secao": "...", "tipo": "...", "pergunta": "...", "opcoes": [...] }] }' />
@@ -1061,6 +1101,17 @@ function AgendamentoEditor({ agendamento, templates, pacientes, nutriId, onClose
 function RespostasModal({ envio, onClose }) {
   const respostas = envio.respostas ?? {};
   const pacienteNome = envio.paciente?.nome ?? '—';
+  const pontuacao = envio.mostrar_pontuacao
+    ? calcularPontuacaoSecoes(envio.perguntas, respostas)
+    : null;
+  const conclusao = pontuacao ? faixaResultado(pontuacao.total, envio.faixas_resultado) : null;
+  const dadosGrafico = envio.metas_secao && pontuacao
+    ? Object.keys(envio.metas_secao).map(secao => ({
+        label: secao,
+        a: envio.metas_secao[secao],
+        b: pontuacao.porSecao[secao]?.pontos ?? 0,
+      }))
+    : null;
 
   function baixarPDF() {
     const linhas = (envio.perguntas ?? []).map(p => `
@@ -1117,7 +1168,39 @@ function RespostasModal({ envio, onClose }) {
     <ModalShell title="Respostas do questionário"
       subtitle={`${pacienteNome} · respondido em ${dataBR(envio.respondido_em)}`}
       onClose={onClose} large>
-      <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: 12, marginTop: 8 }}>
+
+      {pontuacao && (
+        <div style={{ background: 'var(--white)', border: '0.5px solid var(--border)', borderRadius: 10, padding: 16, marginTop: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--dark)' }}>Resultado geral:</span>
+            <span style={{ fontSize: 20, fontWeight: 600, color: 'var(--dark)' }}>{pontuacao.total} pontos</span>
+          </div>
+          {conclusao && (
+            <div style={{
+              marginTop: 8, background: 'var(--orange-bg, #fdf1e3)', color: 'var(--orange, #b06a1e)',
+              padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+            }}>{conclusao}</div>
+          )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+            {Object.entries(pontuacao.porSecao).map(([secao, { pontos, maximo }]) => (
+              <div key={secao} style={{
+                background: 'var(--bg2)', borderRadius: 8, padding: '6px 10px', fontSize: 12,
+                display: 'flex', gap: 8, alignItems: 'center',
+              }}>
+                <span style={{ color: 'var(--text2)' }}>{secao}</span>
+                <span style={{ fontWeight: 600, color: 'var(--dark)' }}>{pontos}/{maximo}</span>
+              </div>
+            ))}
+          </div>
+          {dadosGrafico && (
+            <div style={{ marginTop: 18 }}>
+              <GraficoBarrasDuplas dados={dadosGrafico} labelA="Recomendado" labelB="Consumido" />
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: 12, marginTop: 12 }}>
         {envio.perguntas?.map(p => (
           <div key={p.id} style={{
             padding: '10px 0',

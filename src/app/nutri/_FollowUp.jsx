@@ -2,6 +2,15 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase.js';
 import { dataBR } from '../../lib/utils.js';
 
+// Perguntas fixas de acompanhamento mensal — cada uma vira um campo com
+// pergunta + caixinha de resposta, no lugar do texto livre único de antes.
+const CAMPOS_CONSULTA = [
+  { key: 'aderencia',           label: 'Aderência',                   pergunta: 'Conseguiu aderir a tudo que combinamos? Como foi esse mês?' },
+  { key: 'condutas_anteriores', label: 'Condutas da última consulta',  pergunta: 'O que ela fez e o que não fez das condutas combinadas?' },
+  { key: 'condutas_novas',      label: 'Condutas para esse mês',       pergunta: 'O que vamos combinar/ajustar pra esse mês?' },
+  { key: 'suplementacao',       label: 'Suplementação',                pergunta: 'O que está tomando / o que vamos iniciar?' },
+];
+
 export default function FollowUp({ pacienteId, nutriId, pacienteNome }) {
   const [followups, setFollowups] = useState(null);
   const [templates, setTemplates] = useState([]);
@@ -30,11 +39,13 @@ export default function FollowUp({ pacienteId, nutriId, pacienteNome }) {
   }
 
   function novoEmBranco() {
+    const hoje = new Date().toISOString().slice(0, 10);
     setEditar({
       novo: true,
-      titulo: '',
+      titulo: `Consulta · ${dataBR(hoje)}`,
       conteudo: '',
-      data: new Date().toISOString().slice(0, 10),
+      campos: {},
+      data: hoje,
       template_id: null,
     });
   }
@@ -175,27 +186,47 @@ export default function FollowUp({ pacienteId, nutriId, pacienteNome }) {
    MODAL: criar/editar um follow-up
    ============================================================ */
 function ModalEditarFollowup({ fu, pacienteId, nutriId, onClose, onSaved }) {
-  const [titulo, setTitulo] = useState(fu.titulo);
+  // Modo campos fixos: follow-up novo (sem vir de um modelo de texto) ou
+  // follow-up existente que já foi salvo com `campos`. Follow-ups antigos
+  // (só `conteudo`) ou vindos de um modelo de texto livre continuam no
+  // modo texto único, sem quebrar o que já existia.
+  const modoFixo = !fu.template_id && (fu.novo || fu.campos != null);
+
+  const [titulo, setTitulo] = useState(fu.titulo ?? '');
   const [data, setData] = useState(fu.data);
-  const [conteudo, setConteudo] = useState(fu.conteudo);
+  const [conteudo, setConteudo] = useState(fu.conteudo ?? '');
+  const [campos, setCampos] = useState(fu.campos ?? {});
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState(null);
 
   async function salvar() {
     setErro(null);
     if (!titulo.trim()) return setErro('Informe um título.');
-    if (!conteudo.trim()) return setErro('Conteúdo vazio.');
+
+    let conteudoFinal = conteudo;
+    let camposFinal = null;
+    if (modoFixo) {
+      const preenchido = CAMPOS_CONSULTA.some(c => (campos[c.key] || '').trim());
+      if (!preenchido) return setErro('Preencha pelo menos um dos campos.');
+      camposFinal = campos;
+      conteudoFinal = CAMPOS_CONSULTA
+        .map(c => `${c.label}:\n${(campos[c.key] || '').trim() || '—'}`)
+        .join('\n\n');
+    } else if (!conteudo.trim()) {
+      return setErro('Conteúdo vazio.');
+    }
+
     setBusy(true);
     if (fu.novo) {
       const { error } = await supabase.from('followups').insert({
         paciente_id: pacienteId, nutri_id: nutriId,
-        titulo: titulo.trim(), conteudo, data,
+        titulo: titulo.trim(), conteudo: conteudoFinal, campos: camposFinal, data,
         template_id: fu.template_id ?? null,
       });
       if (error) { setBusy(false); return setErro('Erro: ' + error.message); }
     } else {
       const { error } = await supabase.from('followups')
-        .update({ titulo: titulo.trim(), conteudo, data, updated_at: new Date().toISOString() })
+        .update({ titulo: titulo.trim(), conteudo: conteudoFinal, campos: camposFinal, data, updated_at: new Date().toISOString() })
         .eq('id', fu.id);
       if (error) { setBusy(false); return setErro('Erro: ' + error.message); }
     }
@@ -241,14 +272,32 @@ function ModalEditarFollowup({ fu, pacienteId, nutriId, onClose, onSaved }) {
           </div>
         </div>
 
-        <label className="form-lbl" style={{ marginTop: 12 }}>Conteúdo</label>
-        <textarea value={conteudo} onChange={e => setConteudo(e.target.value)}
-          rows={16}
-          style={{
-            width: '100%', boxSizing: 'border-box',
-            resize: 'vertical', minHeight: 280,
-            fontFamily: 'var(--font-sans)', fontSize: 13, lineHeight: 1.5,
-          }} />
+        {modoFixo ? (
+          CAMPOS_CONSULTA.map(c => (
+            <div key={c.key} style={{ marginTop: 12 }}>
+              <label className="form-lbl" style={{ marginBottom: 2 }}>{c.label}</label>
+              <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 6 }}>{c.pergunta}</div>
+              <textarea value={campos[c.key] ?? ''} onChange={e => setCampos(v => ({ ...v, [c.key]: e.target.value }))}
+                rows={3}
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  resize: 'vertical', minHeight: 64,
+                  fontFamily: 'var(--font-sans)', fontSize: 13, lineHeight: 1.5,
+                }} />
+            </div>
+          ))
+        ) : (
+          <>
+            <label className="form-lbl" style={{ marginTop: 12 }}>Conteúdo</label>
+            <textarea value={conteudo} onChange={e => setConteudo(e.target.value)}
+              rows={16}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                resize: 'vertical', minHeight: 280,
+                fontFamily: 'var(--font-sans)', fontSize: 13, lineHeight: 1.5,
+              }} />
+          </>
+        )}
 
         {erro && (
           <div style={{

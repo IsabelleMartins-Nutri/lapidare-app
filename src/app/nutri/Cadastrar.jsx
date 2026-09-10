@@ -48,6 +48,7 @@ export default function Cadastrar() {
   const [nascimento, setNascimento] = useState('');
   const [sexo, setSexo] = useState('feminino');
   const [objetivo, setObjetivo] = useState(OBJETIVOS_DEFAULT[0]);
+  const [objetivoDetalhe, setObjetivoDetalhe] = useState('');
   const [tipoPlano, setTipoPlano] = useState(TIPOS_PLANO_DEFAULT[0]);
   const [modalidade, setModalidade] = useState(MODALIDADES_DEFAULT[1]); // Online por default
   const [obs, setObs] = useState('');
@@ -161,6 +162,7 @@ export default function Cadastrar() {
       nascimento: nascimento || null,
       sexo,
       objetivo,
+      objetivo_detalhe: objetivoDetalhe.trim() || null,
       tipo_plano: tipoPlano,
       modalidade,
       obs: obs.trim() || null,
@@ -172,7 +174,7 @@ export default function Cadastrar() {
     const { omitColunasFaltantes } = await import('../../lib/utils.js');
     let { data, error, omitidos } = await omitColunasFaltantes(
       payload,
-      ['sexo', 'nascimento'],
+      ['sexo', 'nascimento', 'objetivo_detalhe'],
       (p) => supabase
         .from('pacientes_pendentes')
         .upsert(p, { onConflict: 'nutri_id,email' })
@@ -376,6 +378,20 @@ export default function Cadastrar() {
           </div>
 
           <SelectField label="Objetivo" value={objetivo} onChange={setObjetivo} options={objetivosCustom} />
+          <label style={{ display: 'block', marginBottom: 12 }}>
+            <span style={{
+              display: 'block', fontSize: 11, color: 'var(--text3)',
+              marginBottom: 5, fontWeight: 500,
+            }}>Detalhe o objetivo (opcional)</span>
+            <textarea value={objetivoDetalhe} onChange={e => setObjetivoDetalhe(e.target.value)} rows={2}
+              placeholder="Ex: quer emagrecer porque está tentando engravidar"
+              style={{
+                width: '100%', padding: '10px 12px', fontSize: 13,
+                border: '0.5px solid var(--border)', borderRadius: 8,
+                outline: 'none', fontFamily: 'var(--font-sans)',
+                resize: 'vertical', boxSizing: 'border-box',
+              }} />
+          </label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <SelectField label="Tipo de plano" value={tipoPlano} onChange={setTipoPlano} options={tiposPlanoCustom} />
             <SelectField label="Modalidade" value={modalidade} onChange={setModalidade} options={modalidadesCustom} />

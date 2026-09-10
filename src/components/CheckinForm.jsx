@@ -59,6 +59,7 @@ function renderTipo(p, valor, onChange, disabled) {
     case 'emoji_scale': return <EmojiScale p={p} valor={valor} onChange={onChange} disabled={disabled} />;
     case 'slider':      return <SliderQ p={p} valor={valor} onChange={onChange} disabled={disabled} />;
     case 'single':      return <SingleOpts p={p} valor={valor} onChange={onChange} disabled={disabled} />;
+    case 'pontuacao':   return <PontuacaoOpts p={p} valor={valor} onChange={onChange} disabled={disabled} />;
     case 'multi':       return <MultiOpts p={p} valor={valor} onChange={onChange} disabled={disabled} />;
     case 'habitos':     return <Habitos p={p} valor={valor} onChange={onChange} disabled={disabled} />;
     case 'texto':       return <Texto p={p} valor={valor} onChange={onChange} disabled={disabled} />;
@@ -106,6 +107,20 @@ function SingleOpts({ p, valor, onChange, disabled }) {
           className={'ckg-opt' + (valor === o ? ' active' : '')}
           onClick={() => onChange(o)}>
           <span className="ckg-opt-check"></span>{o}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PontuacaoOpts({ p, valor, onChange, disabled }) {
+  return (
+    <div className="ckg-options">
+      {p.opcoes?.map((o, i) => (
+        <button key={i} type="button" disabled={disabled}
+          className={'ckg-opt' + (valor === o.valor ? ' active' : '')}
+          onClick={() => onChange(o.valor)}>
+          <span className="ckg-opt-check"></span>{o.label}
         </button>
       ))}
     </div>

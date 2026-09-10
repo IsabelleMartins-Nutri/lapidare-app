@@ -8,6 +8,10 @@
  *  - multi:       { opcoes: [string] }                              → resposta: [string]
  *  - habitos:     { opcoes: [{ emoji, label }] }                    → resposta: [string]
  *  - texto:       { placeholder?, rows? }                           → resposta: string
+ *  - pontuacao:   { opcoes: [{ label, valor }] }                    → resposta: número
+ *      (igual ao single visualmente, mas cada opção tem peso numérico —
+ *      usado em questionários com pontuação por seção, ex: rastreamento
+ *      de sintomas e frequência alimentar)
  */
 
 export const TEMPLATE_PADRAO = {
@@ -216,7 +220,7 @@ export function respostasIniciais(perguntas) {
  * Valida a estrutura de um template importado via JSON.
  * Retorna { ok: true } ou { ok: false, erro }.
  */
-const TIPOS_VALIDOS = ['emoji_scale', 'slider', 'single', 'multi', 'habitos', 'texto'];
+const TIPOS_VALIDOS = ['emoji_scale', 'slider', 'single', 'multi', 'habitos', 'texto', 'pontuacao'];
 
 export function validarTemplate(obj) {
   if (!obj || typeof obj !== 'object') return { ok: false, erro: 'JSON inválido — esperado objeto.' };
@@ -235,9 +239,14 @@ export function validarTemplate(obj) {
     if (!TIPOS_VALIDOS.includes(p.tipo)) {
       return { ok: false, erro: `Pergunta "${p.id}" tem tipo inválido "${p.tipo}". Tipos: ${TIPOS_VALIDOS.join(', ')}.` };
     }
-    if (['emoji_scale', 'single', 'multi', 'habitos'].includes(p.tipo)) {
+    if (['emoji_scale', 'single', 'multi', 'habitos', 'pontuacao'].includes(p.tipo)) {
       if (!Array.isArray(p.opcoes) || p.opcoes.length === 0) {
         return { ok: false, erro: `Pergunta "${p.id}" do tipo ${p.tipo} precisa de "opcoes" (array).` };
+      }
+    }
+    if (p.tipo === 'pontuacao') {
+      if (p.opcoes.some(o => typeof o?.valor !== 'number')) {
+        return { ok: false, erro: `Pergunta "${p.id}" do tipo pontuacao precisa que toda opção tenha "valor" numérico.` };
       }
     }
     if (p.tipo === 'slider') {
@@ -285,5 +294,51 @@ export function formatarResposta(pergunta, valor) {
     if (!Array.isArray(valor) || valor.length === 0) return '—';
     return valor.join(' · ');
   }
+  if (pergunta.tipo === 'pontuacao') {
+    const opt = pergunta.opcoes?.find(o => o.valor === valor);
+    return opt ? `${opt.label} (${opt.valor})` : String(valor);
+  }
   return String(valor);
+}
+
+// Tipos de pergunta cuja resposta é sempre numérica — entram na soma de pontuação.
+const TIPOS_NUMERICOS = ['emoji_scale', 'slider', 'pontuacao'];
+
+/**
+ * Soma a pontuação das respostas de um envio, agrupada por seção — usada
+ * em questionários com `mostrar_pontuacao` (ex: rastreamento metabólico,
+ * frequência alimentar). Perguntas de tipo não-numérico são ignoradas.
+ * Retorna { porSecao: { [secao]: { pontos, maximo } }, total, maximoTotal }.
+ */
+export function calcularPontuacaoSecoes(perguntas, respostas) {
+  const porSecao = {};
+  let total = 0;
+  let maximoTotal = 0;
+  for (const p of perguntas ?? []) {
+    if (!TIPOS_NUMERICOS.includes(p.tipo)) continue;
+    const maximoPergunta = p.tipo === 'slider'
+      ? Number(p.max ?? 0)
+      : Math.max(0, ...(p.opcoes ?? []).map(o => Number(o.valor ?? 0)));
+    const valor = Number(respostas?.[p.id]);
+    const pontos = Number.isFinite(valor) ? valor : 0;
+
+    if (!porSecao[p.secao]) porSecao[p.secao] = { pontos: 0, maximo: 0 };
+    porSecao[p.secao].pontos += pontos;
+    porSecao[p.secao].maximo += maximoPergunta;
+    total += pontos;
+    maximoTotal += maximoPergunta;
+  }
+  return { porSecao, total, maximoTotal };
+}
+
+/**
+ * Acha a faixa de resultado correspondente a um total de pontos.
+ * faixas: [{ ate: number, texto: string }] — não precisa vir ordenado.
+ * A última faixa (maior "ate") vale como "sem teto" se o total ultrapassar todas.
+ */
+export function faixaResultado(total, faixas) {
+  if (!Array.isArray(faixas) || faixas.length === 0) return null;
+  const ordenadas = [...faixas].sort((a, b) => a.ate - b.ate);
+  const encontrada = ordenadas.find(f => total <= f.ate);
+  return (encontrada ?? ordenadas[ordenadas.length - 1]).texto;
 }

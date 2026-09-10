@@ -28,6 +28,7 @@ export async function criarProntuarioSilencioso(pendente) {
       nascimento: pendente.nascimento,
       sexo: pendente.sexo,
       objetivo: pendente.objetivo,
+      objetivo_detalhe: pendente.objetivo_detalhe,
       tipo_plano: pendente.tipo_plano,
       modalidade: pendente.modalidade,
     }),

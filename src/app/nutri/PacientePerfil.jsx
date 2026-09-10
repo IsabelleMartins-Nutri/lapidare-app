@@ -8,10 +8,11 @@ import {
   validarPlano, validarLista, validarSubstituicoes, contarItensLista, normalizarPlano,
   omitColunasFaltantes,
 } from '../../lib/utils.js';
-import { TEMPLATE_PADRAO, formatarResposta } from '../../lib/checkinDefault.js';
+import { TEMPLATE_PADRAO, formatarResposta, calcularPontuacaoSecoes } from '../../lib/checkinDefault.js';
 import CheckinForm from '../../components/CheckinForm.jsx';
 import Evolucao from './_Evolucao.jsx';
 import FollowUp from './_FollowUp.jsx';
+import Meta from './_Meta.jsx';
 import Suplementacao from './_Suplementacao.jsx';
 import Habitos from './_Habitos.jsx';
 import Anamnese from './_Anamnese.jsx';
@@ -36,6 +37,7 @@ export default function PacientePerfil() {
   const [novoNasc, setNovoNasc] = useState('');
   const [salvandoNasc, setSalvandoNasc] = useState(false);
   const [salvandoSexo, setSalvandoSexo] = useState(false);
+  const [salvandoAtiva, setSalvandoAtiva] = useState(false);
   const [salvandoCondicoes, setSalvandoCondicoes] = useState(false);
   const [novaCondicaoTexto, setNovaCondicaoTexto] = useState(null);
 
@@ -111,6 +113,15 @@ export default function PacientePerfil() {
       }
       return;
     }
+    carregar();
+  }
+
+  async function salvarAtiva(novaAtiva) {
+    setSalvandoAtiva(true);
+    const { error } = await supabase.from('pacientes')
+      .update({ ativa: novaAtiva }).eq('id', id);
+    setSalvandoAtiva(false);
+    if (error) return alert('Erro ao atualizar status: ' + error.message);
     carregar();
   }
 
@@ -201,7 +212,15 @@ export default function PacientePerfil() {
           fontSize: 18, fontWeight: 600, color: 'var(--dark)',
         }}>{iniciais(paciente.nome)}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="page-title" style={{ marginBottom: 2 }}>{paciente.nome}</div>
+          <div className="page-title" style={{ marginBottom: 2, display: 'flex', alignItems: 'center', gap: 10 }}>
+            {paciente.nome}
+            <button onClick={() => salvarAtiva(!paciente.ativa)} disabled={salvandoAtiva}
+              title={paciente.ativa === false ? 'Marcar como ativa' : 'Marcar como inativa'}
+              className={`pill ${paciente.ativa === false ? 'pill-r' : 'pill-g'}`}
+              style={{ border: 'none', cursor: 'pointer', fontSize: 11, verticalAlign: 'middle' }}>
+              {paciente.ativa === false ? 'Inativa' : 'Ativa'}
+            </button>
+          </div>
           <div className="page-sub" style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span>{paciente.email} · {paciente.sexo === 'masculino' ? 'cadastrado' : 'cadastrada'} em {dataBR(paciente.created_at)}</span>
             <button onClick={enviarRedefinicaoSenha}
@@ -339,6 +358,11 @@ export default function PacientePerfil() {
         <div className="stat">
           <div className="stat-lbl">Objetivo</div>
           <div className="stat-val" style={{ fontSize: 18 }}>{paciente.objetivo ?? '—'}</div>
+          {paciente.objetivo_detalhe && (
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4, lineHeight: 1.4 }}>
+              {paciente.objetivo_detalhe}
+            </div>
+          )}
         </div>
         <div className="stat">
           <div className="stat-lbl">Tipo de plano</div>
@@ -360,6 +384,7 @@ export default function PacientePerfil() {
           { id: 'evolucao',    label: 'Evolução',     icon: 'chart-line' },
           { id: 'anamnese',    label: 'Atendimento',  icon: 'clipboard-text' },
           { id: 'followup',    label: 'Follow-up',    icon: 'notebook' },
+          { id: 'meta',        label: 'Meta',         icon: 'target-arrow' },
           { id: 'plano',          label: 'Plano',          icon: 'salad' },
           { id: 'substituicoes', label: 'Substituições',  icon: 'switch-horizontal' },
           { id: 'compras',     label: 'Compras',      icon: 'shopping-cart' },
@@ -396,6 +421,7 @@ export default function PacientePerfil() {
       {tab === 'evolucao' && <Evolucao pacienteId={paciente.id} paciente={paciente} nutriId={user.id} />}
       {tab === 'anamnese' && <Anamnese pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'followup' && <FollowUp pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
+      {tab === 'meta' && <Meta pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'suplementacao' && <Suplementacao pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'habitos' && <Habitos pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'plano' && <PublicarPlano pacienteId={paciente.id} nutriId={user.id} />}
@@ -443,6 +469,7 @@ function TabelaEvolucaoCheckins({ envios, pacienteNome }) {
     (e.perguntas ?? []).forEach(p => colunas.set(p.id, p.pergunta || p.id));
   });
   const colunasList = [...colunas.entries()];
+  const temPontuacao = respondidos.some(e => e.mostrar_pontuacao);
 
   function imprimir() {
     const linhasHtml = respondidos.map(e => {
@@ -451,11 +478,17 @@ function TabelaEvolucaoCheckins({ envios, pacienteNome }) {
         const valor = pergunta ? formatarResposta(pergunta, e.respostas?.[id]) : '—';
         return `<td style="padding:8px 10px; border-bottom:1px solid #e3dcce; font-size:12px;">${escapeHtmlCheckin(valor)}</td>`;
       }).join('');
-      return `<tr><td style="padding:8px 10px; border-bottom:1px solid #e3dcce; font-size:12px; font-weight:600; white-space:nowrap;">${escapeHtmlCheckin(dataBR(e.respondido_em))}</td>${celulas}</tr>`;
+      const totalCel = temPontuacao
+        ? `<td style="padding:8px 10px; border-bottom:1px solid #e3dcce; font-size:12px; font-weight:600;">${e.mostrar_pontuacao ? calcularPontuacaoSecoes(e.perguntas, e.respostas).total : '—'}</td>`
+        : '';
+      return `<tr><td style="padding:8px 10px; border-bottom:1px solid #e3dcce; font-size:12px; font-weight:600; white-space:nowrap;">${escapeHtmlCheckin(dataBR(e.respondido_em))}</td>${totalCel}${celulas}</tr>`;
     }).join('');
     const cabecalhoHtml = colunasList.map(([, label]) =>
       `<th style="padding:8px 10px; border-bottom:2px solid #c9a96e; font-size:11px; text-align:left;">${escapeHtmlCheckin(label)}</th>`
     ).join('');
+    const totalTh = temPontuacao
+      ? `<th style="padding:8px 10px; border-bottom:2px solid #c9a96e; font-size:11px; text-align:left;">Total</th>`
+      : '';
 
     const html = `<!doctype html>
 <html lang="pt-BR">
@@ -474,7 +507,7 @@ function TabelaEvolucaoCheckins({ envios, pacienteNome }) {
   <h1>Evolução dos check-ins</h1>
   <div class="meta">Paciente: <strong>${escapeHtmlCheckin(pacienteNome)}</strong> · ${respondidos.length} check-ins respondidos</div>
   <table>
-    <thead><tr><th style="padding:8px 10px; border-bottom:2px solid #c9a96e; font-size:11px; text-align:left;">Data</th>${cabecalhoHtml}</tr></thead>
+    <thead><tr><th style="padding:8px 10px; border-bottom:2px solid #c9a96e; font-size:11px; text-align:left;">Data</th>${totalTh}${cabecalhoHtml}</tr></thead>
     <tbody>${linhasHtml}</tbody>
   </table>
   <script>window.onload = () => setTimeout(() => window.print(), 400);</script>
@@ -500,6 +533,7 @@ function TabelaEvolucaoCheckins({ envios, pacienteNome }) {
           <thead>
             <tr>
               <th style={{ whiteSpace: 'nowrap' }}>Data</th>
+              {temPontuacao && <th style={{ whiteSpace: 'nowrap' }}>Total</th>}
               {colunasList.map(([id, label]) => (
                 <th key={id} title={label} style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {label}
@@ -511,6 +545,11 @@ function TabelaEvolucaoCheckins({ envios, pacienteNome }) {
             {respondidos.map(e => (
               <tr key={e.id}>
                 <td style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>{dataBR(e.respondido_em)}</td>
+                {temPontuacao && (
+                  <td style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
+                    {e.mostrar_pontuacao ? calcularPontuacaoSecoes(e.perguntas, e.respostas).total : '—'}
+                  </td>
+                )}
                 {colunasList.map(([id]) => {
                   const pergunta = (e.perguntas ?? []).find(p => p.id === id);
                   const valor = pergunta ? formatarResposta(pergunta, e.respostas?.[id]) : '—';
@@ -545,7 +584,7 @@ function CheckinPersonalizado({ pacienteId, nutriId, pacienteNome }) {
         .neq('tipo', 'atendimento')
         .order('created_at'),
       supabase.from('checkin_envios')
-        .select('id, enviado_em, respondido_em, lembrete_enviado_em, perguntas, respostas')
+        .select('id, enviado_em, respondido_em, lembrete_enviado_em, perguntas, respostas, mostrar_pontuacao, faixas_resultado, metas_secao')
         .eq('paciente_id', pacienteId)
         .neq('tipo', 'atendimento')
         .order('enviado_em', { ascending: false })
@@ -574,6 +613,9 @@ function CheckinPersonalizado({ pacienteId, nutriId, pacienteNome }) {
       nome: tpl.nome ?? 'Questionário',
       tipo: tpl.tipo === 'pre_consulta' ? 'pre_consulta' : 'recorrente',
       perguntas: tpl.perguntas,
+      mostrar_pontuacao: tpl.mostrar_pontuacao ?? false,
+      faixas_resultado: tpl.faixas_resultado ?? null,
+      metas_secao: tpl.metas_secao ?? null,
     });
     setBusy(false);
     if (error) return setAviso({ tipo: 'erro', msg: error.message });
@@ -717,6 +759,9 @@ const METRICAS_AVALIACAO = [
   { key: 'kg',               label: 'Peso',             unidade: 'kg', dec: 1 },
   { key: 'cintura_cm',       label: 'Cintura',          unidade: 'cm', dec: 1 },
   { key: 'quadril_cm',       label: 'Quadril',          unidade: 'cm', dec: 1 },
+  { key: 'torax_cm',         label: 'Tórax',            unidade: 'cm', dec: 1 },
+  { key: 'abdomen_cm',       label: 'Abdômen',          unidade: 'cm', dec: 1 },
+  { key: 'panturrilha_cm',   label: 'Panturrilha',      unidade: 'cm', dec: 1 },
   { key: 'pgc',              label: '% gordura',        unidade: '%',  dec: 1 },
   { key: 'mm_kg',            label: 'Massa magra',      unidade: 'kg', dec: 1 },
   { key: 'agua_corporal',    label: 'Água corporal',    unidade: '%',  dec: 1 },
@@ -815,7 +860,8 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
     return {
       data: new Date().toISOString().slice(0, 10),
       kg: '', altura_cm: '', cintura_cm: '', quadril_cm: '',
-      braco_cm: '', coxa_cm: '', pgc: '', mm_kg: '',
+      braco_cm: '', coxa_cm: '', torax_cm: '', abdomen_cm: '', panturrilha_cm: '',
+      pgc: '', mm_kg: '',
       agua_corporal: '', gordura_visceral: '', tmb: '',
       dobra_formula: '',
       dobra_tricipital: '', dobra_bicipital: '', dobra_abdominal: '', dobra_subescapular: '',
@@ -828,7 +874,8 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
   async function carregar() {
     const { data } = await supabase
       .from('peso_registros')
-      .select(`id, data, kg, altura_cm, cintura_cm, quadril_cm, braco_cm, coxa_cm, pgc, mm_kg,
+      .select(`id, data, kg, altura_cm, cintura_cm, quadril_cm, braco_cm, coxa_cm,
+        torax_cm, abdomen_cm, panturrilha_cm, pgc, mm_kg,
         agua_corporal, gordura_visceral, tmb, dobra_formula,
         dobra_tricipital, dobra_bicipital, dobra_abdominal, dobra_subescapular,
         dobra_axilar_media, dobra_coxa, dobra_toracica, dobra_suprailiaca,
@@ -874,6 +921,9 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
       quadril_cm: num(form.quadril_cm),
       braco_cm: num(form.braco_cm),
       coxa_cm: num(form.coxa_cm),
+      torax_cm: num(form.torax_cm),
+      abdomen_cm: num(form.abdomen_cm),
+      panturrilha_cm: num(form.panturrilha_cm),
       pgc: num(form.pgc),
       mm_kg: num(form.mm_kg),
       agua_corporal: num(form.agua_corporal),
@@ -899,6 +949,7 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
         'dobra_tricipital', 'dobra_bicipital', 'dobra_abdominal', 'dobra_subescapular',
         'dobra_axilar_media', 'dobra_coxa', 'dobra_toracica', 'dobra_suprailiaca',
         'dobra_panturrilha', 'dobra_supraespinhal',
+        'torax_cm', 'abdomen_cm', 'panturrilha_cm',
       ],
       (p) => supabase.from('peso_registros').insert(p),
     );
@@ -978,6 +1029,18 @@ function RegistrarAvaliacao({ pacienteId, nutriId }) {
             <div>
               <label className="field-label">Coxa</label>
               <input inputMode="decimal" value={form.coxa_cm} onChange={set('coxa_cm')} />
+            </div>
+            <div>
+              <label className="field-label">Tórax</label>
+              <input inputMode="decimal" value={form.torax_cm} onChange={set('torax_cm')} />
+            </div>
+            <div>
+              <label className="field-label">Abdômen</label>
+              <input inputMode="decimal" value={form.abdomen_cm} onChange={set('abdomen_cm')} />
+            </div>
+            <div>
+              <label className="field-label">Panturrilha</label>
+              <input inputMode="decimal" value={form.panturrilha_cm} onChange={set('panturrilha_cm')} />
             </div>
           </div>
 

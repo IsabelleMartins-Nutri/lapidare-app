@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { nome, email, nascimento, sexo, objetivo, tipo_plano, modalidade } = body;
+    const { nome, email, nascimento, sexo, objetivo, objetivo_detalhe, tipo_plano, modalidade } = body;
     if (!nome || !email) {
       return new Response(JSON.stringify({ error: 'Nome e email são obrigatórios.' }), {
         status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
@@ -78,6 +78,7 @@ Deno.serve(async (req) => {
         nascimento: nascimento || null,
         sexo: sexo || 'feminino',
         objetivo: objetivo || null,
+        objetivo_detalhe: objetivo_detalhe || null,
         tipo_plano: tipo_plano || null,
         modalidade: modalidade || null,
       },

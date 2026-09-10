@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase.js';
 import { dataBR } from '../../lib/utils.js';
-import { formatarResposta } from '../../lib/checkinDefault.js';
+import { formatarResposta, calcularPontuacaoSecoes, faixaResultado } from '../../lib/checkinDefault.js';
+import GraficoBarrasDuplas from '../../components/GraficoBarrasDuplas.jsx';
 
 const TIPOS_FOTO = [
   { id: 'frente',          label: 'Frente' },
@@ -9,6 +10,17 @@ const TIPOS_FOTO = [
   { id: 'perfil_esquerdo', label: 'Perfil esquerdo' },
   { id: 'costas',          label: 'Costas' },
   { id: 'livre',           label: 'Livre' },
+];
+
+// Ângulos que entram no comparativo "antes e depois" (fotos "livre" ficam de fora)
+const ANGULOS_COMPARACAO = ['frente', 'costas', 'perfil_direito', 'perfil_esquerdo'];
+
+// Campos de circunferência (cm) somados no card "Circunferências" do Modo Apresentação
+const CIRCUNFERENCIAS_SOMA = ['cintura_cm', 'quadril_cm', 'braco_cm', 'coxa_cm', 'torax_cm', 'abdomen_cm', 'panturrilha_cm'];
+
+const TIPOS_QUESTIONARIO = [
+  { id: 'frequencia_alimentar',    label: 'Frequência alimentar' },
+  { id: 'rastreamento_metabolico', label: 'Rastreamento metabólico' },
 ];
 
 // Cache de signed URLs (5 min)
@@ -19,6 +31,16 @@ async function signedUrl(path) {
   const { data } = await supabase.storage.from('fotos_evolucao').createSignedUrl(path, 300);
   if (!data) return null;
   urlCache.set(path, { url: data.signedUrl, exp: Date.now() + 280_000 });
+  return data.signedUrl;
+}
+
+const urlCacheQuest = new Map();
+async function signedUrlQuestionario(path) {
+  const cached = urlCacheQuest.get(path);
+  if (cached && cached.exp > Date.now()) return cached.url;
+  const { data } = await supabase.storage.from('questionarios_evolucao').createSignedUrl(path, 300);
+  if (!data) return null;
+  urlCacheQuest.set(path, { url: data.signedUrl, exp: Date.now() + 280_000 });
   return data.signedUrl;
 }
 
@@ -33,7 +55,12 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
   const [consultas, setConsultas] = useState([]);
   const [apresentacao, setApresentacao] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [comparar, setComparar] = useState({ a: null, b: null });
+  const [comparar, setComparar] = useState({});
+  const [questionarios, setQuestionarios] = useState([]);
+  const [qUrls, setQUrls] = useState({});
+  const [uploadQuestOpen, setUploadQuestOpen] = useState(false);
+  const [feedPratosCount, setFeedPratosCount] = useState(0);
+  const [checkinsEnviados, setCheckinsEnviados] = useState(0);
   const [verCheckin, setVerCheckin] = useState(null);
   const [habitosRelatados, setHabitosRelatados] = useState([]);
   const [registrarHabito, setRegistrarHabito] = useState(null); // null = fechado, { item } = aberto (item pré-preenchido opcional)
@@ -44,14 +71,17 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
   useEffect(() => {
     let active = true;
     async function carregar() {
-      const [avRes, ftRes, ckRes, plRes, prRes, csRes, ehRes] = await Promise.all([
+      const [avRes, ftRes, ckRes, plRes, prRes, csRes, ehRes, qeRes, fpRes, ceRes] = await Promise.all([
         supabase.from('peso_registros').select('*').eq('paciente_id', pacienteId).order('data'),
         supabase.from('fotos_evolucao').select('*').eq('paciente_id', pacienteId).order('data_foto'),
-        supabase.from('checkin_envios').select('id, perguntas, respostas, respondido_em, enviado_em').eq('paciente_id', pacienteId).not('respondido_em', 'is', null).order('respondido_em'),
+        supabase.from('checkin_envios').select('id, perguntas, respostas, respondido_em, enviado_em, mostrar_pontuacao, faixas_resultado, metas_secao').eq('paciente_id', pacienteId).not('respondido_em', 'is', null).order('respondido_em'),
         supabase.from('planos').select('id, dados, publicado_em').eq('paciente_id', pacienteId).order('publicado_em'),
         supabase.from('prescricoes').select('id, tipo, titulo, created_at').eq('paciente_id', pacienteId).order('created_at'),
         supabase.from('consultas').select('id, tipo, data_hora, status').eq('paciente_id', pacienteId).order('data_hora'),
         supabase.from('evolucao_habitos').select('*').eq('paciente_id', pacienteId).order('data'),
+        supabase.from('questionarios_evolucao').select('*').eq('paciente_id', pacienteId).order('data'),
+        supabase.from('feed_pratos').select('id', { count: 'exact', head: true }).eq('paciente_id', pacienteId),
+        supabase.from('checkin_envios').select('id', { count: 'exact', head: true }).eq('paciente_id', pacienteId),
       ]);
       if (!active) return;
       setAvaliacoes(avRes.data ?? []);
@@ -61,6 +91,9 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
       setPrescricoes(prRes.data ?? []);
       setConsultas(csRes.data ?? []);
       setHabitosRelatados(ehRes.data ?? []);
+      setQuestionarios(qeRes.data ?? []);
+      setFeedPratosCount(fpRes.count ?? 0);
+      setCheckinsEnviados(ceRes.count ?? 0);
 
       // pré-fetch signed URLs
       const novasUrls = {};
@@ -72,15 +105,26 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
       if (!active) return;
       setUrls(novasUrls);
 
-      // por padrão, comparativo = primeira foto vs última (frente)
-      const frentes = (ftRes.data ?? []).filter(f => f.tipo === 'frente');
-      const todas = ftRes.data ?? [];
-      const ordem = frentes.length >= 2 ? frentes : todas;
-      if (ordem.length >= 2) {
-        setComparar({ a: ordem[0].id, b: ordem[ordem.length - 1].id });
-      } else if (ordem.length === 1) {
-        setComparar({ a: ordem[0].id, b: null });
+      const novasQUrls = {};
+      for (const q of qeRes.data ?? []) {
+        if (!active) return;
+        const u = await signedUrlQuestionario(q.storage_path);
+        if (u) novasQUrls[q.id] = u;
       }
+      if (!active) return;
+      setQUrls(novasQUrls);
+
+      // por padrão, comparativo de cada ângulo = primeira foto vs última daquele ângulo
+      const porTipo = {};
+      for (const tipo of ANGULOS_COMPARACAO) {
+        const doTipo = (ftRes.data ?? []).filter(f => f.tipo === tipo);
+        if (doTipo.length >= 2) {
+          porTipo[tipo] = { a: doTipo[0].id, b: doTipo[doTipo.length - 1].id };
+        } else if (doTipo.length === 1) {
+          porTipo[tipo] = { a: doTipo[0].id, b: null };
+        }
+      }
+      setComparar(porTipo);
 
       setCarregando(false);
     }
@@ -90,14 +134,17 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
 
   // Wrapper pra manter compat com handlers que chamam carregar() explicitamente.
   async function carregar() {
-    const [avRes, ftRes, ckRes, plRes, prRes, csRes, ehRes] = await Promise.all([
+    const [avRes, ftRes, ckRes, plRes, prRes, csRes, ehRes, qeRes, fpRes, ceRes] = await Promise.all([
       supabase.from('peso_registros').select('*').eq('paciente_id', pacienteId).order('data'),
       supabase.from('fotos_evolucao').select('*').eq('paciente_id', pacienteId).order('data_foto'),
-      supabase.from('checkin_envios').select('id, perguntas, respostas, respondido_em, enviado_em').eq('paciente_id', pacienteId).not('respondido_em', 'is', null).order('respondido_em'),
+      supabase.from('checkin_envios').select('id, perguntas, respostas, respondido_em, enviado_em, mostrar_pontuacao, faixas_resultado, metas_secao').eq('paciente_id', pacienteId).not('respondido_em', 'is', null).order('respondido_em'),
       supabase.from('planos').select('id, dados, publicado_em').eq('paciente_id', pacienteId).order('publicado_em'),
       supabase.from('prescricoes').select('id, tipo, titulo, created_at').eq('paciente_id', pacienteId).order('created_at'),
       supabase.from('consultas').select('id, tipo, data_hora, status').eq('paciente_id', pacienteId).order('data_hora'),
       supabase.from('evolucao_habitos').select('*').eq('paciente_id', pacienteId).order('data'),
+      supabase.from('questionarios_evolucao').select('*').eq('paciente_id', pacienteId).order('data'),
+      supabase.from('feed_pratos').select('id', { count: 'exact', head: true }).eq('paciente_id', pacienteId),
+      supabase.from('checkin_envios').select('id', { count: 'exact', head: true }).eq('paciente_id', pacienteId),
     ]);
     setAvaliacoes(avRes.data ?? []);
     setFotos(ftRes.data ?? []);
@@ -106,6 +153,24 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
     setPrescricoes(prRes.data ?? []);
     setConsultas(csRes.data ?? []);
     setHabitosRelatados(ehRes.data ?? []);
+    setQuestionarios(qeRes.data ?? []);
+    setFeedPratosCount(fpRes.count ?? 0);
+    setCheckinsEnviados(ceRes.count ?? 0);
+
+    const novasUrls = {};
+    for (const f of ftRes.data ?? []) {
+      const u = await signedUrl(f.storage_path);
+      if (u) novasUrls[f.id] = u;
+    }
+    setUrls(novasUrls);
+
+    const novasQUrls = {};
+    for (const q of qeRes.data ?? []) {
+      const u = await signedUrlQuestionario(q.storage_path);
+      if (u) novasQUrls[q.id] = u;
+    }
+    setQUrls(novasQUrls);
+
     setCarregando(false);
   }
 
@@ -134,15 +199,40 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
     [habitosRelatados],
   );
 
+  // Questionários agrupados por tipo, ordenados por data — usado tanto na
+  // listagem normal quanto no comparativo primeiro x último do Modo Apresentação
+  const questionariosPorTipo = useMemo(() => {
+    return TIPOS_QUESTIONARIO.map(t => ({
+      ...t,
+      itens: questionarios.filter(q => q.tipo === t.id).sort((a, b) => a.data.localeCompare(b.data)),
+    })).filter(g => g.itens.length > 0);
+  }, [questionarios]);
+
   async function excluirFoto(foto) {
     if (!window.confirm(`Excluir foto de ${dataBR(foto.data_foto)}? Esta ação não pode ser desfeita.`)) return;
     await supabase.storage.from('fotos_evolucao').remove([foto.storage_path]);
     await supabase.from('fotos_evolucao').delete().eq('id', foto.id);
-    // se a foto excluída estava no comparativo, limpa
-    setComparar(c => ({
-      a: c.a === foto.id ? null : c.a,
-      b: c.b === foto.id ? null : c.b,
-    }));
+    // se a foto excluída estava em algum comparativo, limpa só aquele lado
+    setComparar(c => {
+      const next = { ...c };
+      for (const tipo of Object.keys(next)) {
+        const par = next[tipo];
+        if (par && (par.a === foto.id || par.b === foto.id)) {
+          next[tipo] = {
+            a: par.a === foto.id ? null : par.a,
+            b: par.b === foto.id ? null : par.b,
+          };
+        }
+      }
+      return next;
+    });
+    carregar();
+  }
+
+  async function excluirQuestionario(q) {
+    if (!window.confirm(`Excluir esse print de ${dataBR(q.data)}? Esta ação não pode ser desfeita.`)) return;
+    await supabase.storage.from('questionarios_evolucao').remove([q.storage_path]);
+    await supabase.from('questionarios_evolucao').delete().eq('id', q.id);
     carregar();
   }
 
@@ -170,8 +260,23 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
   };
 
   const deltaPeso = delta('kg');
-  const deltaCintura = delta('cintura_cm');
   const deltaPgc = delta('pgc');
+  const deltaMassaMagra = delta('mm_kg');
+
+  // Soma da perda (primeira - última) de todas as circunferências que tiverem
+  // as duas medições — cada campo ausente é simplesmente ignorado na soma.
+  const somaCircunferencias = (() => {
+    if (!primeira || !ultima || primeira.id === ultima.id) return null;
+    let soma = 0, count = 0;
+    for (const campo of CIRCUNFERENCIAS_SOMA) {
+      const a = Number(primeira[campo]);
+      const b = Number(ultima[campo]);
+      if (!a || !b) continue;
+      soma += a - b;
+      count++;
+    }
+    return count > 0 ? soma : null;
+  })();
 
   // ─── Timeline consolidada ───
   const eventos = useMemo(() => {
@@ -282,8 +387,17 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
     );
   }
 
-  const fotoA = fotos.find(f => f.id === comparar.a);
-  const fotoB = fotos.find(f => f.id === comparar.b);
+  // comparativos prontos, um por ângulo (só entram os que têm pelo menos uma foto escolhida)
+  const comparativos = ANGULOS_COMPARACAO
+    .map(tipo => {
+      const par = comparar[tipo];
+      if (!par) return null;
+      const fotoA = fotos.find(f => f.id === par.a);
+      const fotoB = fotos.find(f => f.id === par.b);
+      if (!fotoA && !fotoB) return null;
+      return { tipo, label: TIPOS_FOTO.find(t => t.id === tipo)?.label ?? tipo, fotoA, fotoB };
+    })
+    .filter(Boolean);
 
   // ─── Modo apresentação ───
   if (apresentacao) {
@@ -292,11 +406,17 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
         paciente={paciente}
         avaliacoes={avaliacoes}
         deltaPeso={deltaPeso}
-        deltaCintura={deltaCintura}
+        deltaMassaMagra={deltaMassaMagra}
         deltaPgc={deltaPgc}
+        somaCircunferencias={somaCircunferencias}
         totalDias={totalDias}
-        fotoA={fotoA} fotoB={fotoB}
+        comparativos={comparativos}
         urls={urls}
+        questionariosPorTipo={questionariosPorTipo}
+        qUrls={qUrls}
+        feedPratosCount={feedPratosCount}
+        checkinsRespondidos={checkins.length}
+        checkinsEnviados={checkinsEnviados}
         gruposHabitos={gruposHabitos}
         onClose={() => setApresentacao(false)}
       />
@@ -323,12 +443,24 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
       {/* Highlights */}
       <div className="stats-grid">
         <HighlightCard titulo="Peso atual"      atual={ultima?.kg}         delta={deltaPeso}     unidade=" kg" />
-        <HighlightCard titulo="Cintura atual"   atual={ultima?.cintura_cm} delta={deltaCintura}  unidade=" cm" />
         <HighlightCard titulo="% gordura atual" atual={ultima?.pgc}        delta={deltaPgc}      unidade="%" />
         <div className="stat-card">
+          <div className="stat-label">Circunferências totais</div>
+          <div className="stat-val">
+            {somaCircunferencias != null
+              ? `${somaCircunferencias > 0 ? '−' : somaCircunferencias < 0 ? '+' : ''}${Math.abs(somaCircunferencias).toFixed(1).replace('.', ',')} cm`
+              : '—'}
+          </div>
+          <div className="stat-sub">
+            {somaCircunferencias != null
+              ? (somaCircunferencias >= 0 ? 'reduzidos desde o início' : 'a mais desde o início')
+              : 'sem medidas suficientes'}
+          </div>
+        </div>
+        <div className="stat-card">
           <div className="stat-label">Adesão check-ins</div>
-          <div className="stat-val">{checkins.length}</div>
-          <div className="stat-sub">respondidos no total</div>
+          <div className="stat-val">{checkins.length}/{checkinsEnviados}</div>
+          <div className="stat-sub">respondidos de enviados</div>
         </div>
       </div>
 
@@ -352,61 +484,73 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
         </div>
       ) : (
         <div className="card" style={{ padding: 16 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {[
-              { key: 'a', foto: fotoA, label: 'Antes' },
-              { key: 'b', foto: fotoB, label: 'Depois' },
-            ].map(({ key, foto, label }) => (
-              <div key={key}>
-                <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6, fontWeight: 500, letterSpacing: '.5px', textTransform: 'uppercase' }}>
-                  {label}
+          {ANGULOS_COMPARACAO.filter(tipo => fotos.some(f => f.tipo === tipo)).map(tipo => {
+            const fotosDoTipo = fotos.filter(f => f.tipo === tipo);
+            const par = comparar[tipo] ?? { a: null, b: null };
+            const fotoA = fotosDoTipo.find(f => f.id === par.a);
+            const fotoB = fotosDoTipo.find(f => f.id === par.b);
+            return (
+              <div key={tipo} style={{ marginBottom: 18 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--dark)', marginBottom: 10 }}>
+                  {TIPOS_FOTO.find(t => t.id === tipo)?.label}
                 </div>
-                <select value={comparar[key] ?? ''} onChange={e => setComparar(c => ({ ...c, [key]: e.target.value || null }))}
-                  style={{ marginBottom: 8 }}>
-                  <option value="">— Selecionar —</option>
-                  {fotos.map(f => (
-                    <option key={f.id} value={f.id}>
-                      {dataBR(f.data_foto)} · {TIPOS_FOTO.find(t => t.id === f.tipo)?.label ?? f.tipo}
-                    </option>
-                  ))}
-                </select>
-                <div style={{
-                  background: 'var(--bg2)', borderRadius: 8,
-                  aspectRatio: '3/4', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center',
-                  overflow: 'hidden', position: 'relative',
-                }}>
-                  {foto && urls[foto.id] ? (
-                    <img src={urls[foto.id]} alt={label}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <i className="ti ti-photo" style={{ fontSize: 36, color: 'var(--text3)' }} aria-hidden="true"></i>
-                  )}
-                  {foto && (
-                    <button
-                      onClick={() => excluirFoto(foto)}
-                      title="Excluir foto"
-                      style={{
-                        position: 'absolute', top: 8, right: 8,
-                        width: 30, height: 30, borderRadius: '50%',
-                        background: 'rgba(0,0,0,.7)', color: 'white',
-                        border: 'none', cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 14, padding: 0,
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  {[
+                    { key: 'a', foto: fotoA, label: 'Antes' },
+                    { key: 'b', foto: fotoB, label: 'Depois' },
+                  ].map(({ key, foto, label }) => (
+                    <div key={key}>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6, fontWeight: 500, letterSpacing: '.5px', textTransform: 'uppercase' }}>
+                        {label}
+                      </div>
+                      <select value={par[key] ?? ''}
+                        onChange={e => setComparar(c => ({ ...c, [tipo]: { ...(c[tipo] ?? { a: null, b: null }), [key]: e.target.value || null } }))}
+                        style={{ marginBottom: 8 }}>
+                        <option value="">— Selecionar —</option>
+                        {fotosDoTipo.map(f => (
+                          <option key={f.id} value={f.id}>{dataBR(f.data_foto)}</option>
+                        ))}
+                      </select>
+                      <div style={{
+                        background: 'var(--bg2)', borderRadius: 8,
+                        aspectRatio: '3/4', display: 'flex',
+                        alignItems: 'center', justifyContent: 'center',
+                        overflow: 'hidden', position: 'relative',
                       }}>
-                      <i className="ti ti-trash" aria-hidden="true"></i>
-                    </button>
-                  )}
+                        {foto && urls[foto.id] ? (
+                          <img src={urls[foto.id]} alt={label}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <i className="ti ti-photo" style={{ fontSize: 36, color: 'var(--text3)' }} aria-hidden="true"></i>
+                        )}
+                        {foto && (
+                          <button
+                            onClick={() => excluirFoto(foto)}
+                            title="Excluir foto"
+                            style={{
+                              position: 'absolute', top: 8, right: 8,
+                              width: 30, height: 30, borderRadius: '50%',
+                              background: 'rgba(0,0,0,.7)', color: 'white',
+                              border: 'none', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 14, padding: 0,
+                            }}>
+                            <i className="ti ti-trash" aria-hidden="true"></i>
+                          </button>
+                        )}
+                      </div>
+                      {foto && (
+                        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6, textAlign: 'center' }}>
+                          {dataBR(foto.data_foto)}
+                          {foto.obs && <> · <em>"{foto.obs}"</em></>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                {foto && (
-                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 6, textAlign: 'center' }}>
-                    {dataBR(foto.data_foto)}
-                    {foto.obs && <> · <em>"{foto.obs}"</em></>}
-                  </div>
-                )}
               </div>
-            ))}
-          </div>
+            );
+          })}
 
           {/* Mini galeria de todas as fotos */}
           {fotos.length > 0 && (
@@ -415,18 +559,24 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
                 Todas as fotos ({fotos.length})
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6 }}>
-                {fotos.map(f => (
+                {fotos.map(f => {
+                  const jaEscolhida = ANGULOS_COMPARACAO.some(tipo => {
+                    const par = comparar[tipo];
+                    return par && (par.a === f.id || par.b === f.id);
+                  });
+                  return (
                   <div key={f.id}
                     onClick={() => {
-                      // se já é A ou B, ignora; senão substitui o B (mais recente)
-                      if (comparar.a === f.id || comparar.b === f.id) return;
-                      setComparar(c => ({ ...c, b: f.id }));
+                      // ignora fotos "livre" (não entram no comparativo) e as já escolhidas
+                      if (!ANGULOS_COMPARACAO.includes(f.tipo) || jaEscolhida) return;
+                      // substitui o "Depois" do ângulo dessa foto
+                      setComparar(c => ({ ...c, [f.tipo]: { ...(c[f.tipo] ?? { a: null, b: null }), b: f.id } }));
                     }}
                     style={{
                       aspectRatio: '1', borderRadius: 6, overflow: 'hidden',
-                      background: 'var(--bg2)', cursor: 'pointer',
+                      background: 'var(--bg2)', cursor: ANGULOS_COMPARACAO.includes(f.tipo) ? 'pointer' : 'default',
                       position: 'relative',
-                      outline: (comparar.a === f.id || comparar.b === f.id) ? '2px solid var(--amber)' : 'none',
+                      outline: jaEscolhida ? '2px solid var(--amber)' : 'none',
                     }}>
                     {urls[f.id] && (
                       <img src={urls[f.id]} alt=""
@@ -453,11 +603,71 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
                       {dataBR(f.data_foto)}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}
         </div>
+      )}
+
+      {/* Questionários (frequência alimentar / rastreamento metabólico) */}
+      <div className="section-header" style={{ marginTop: 18 }}>
+        <div className="section-title">Questionários</div>
+        <button className="btn-outline" onClick={() => setUploadQuestOpen(true)}>
+          <i className="ti ti-plus" aria-hidden="true"></i> Anexar print
+        </button>
+      </div>
+      {questionariosPorTipo.length === 0 ? (
+        <div className="card empty-card">
+          <i className="ti ti-clipboard-text empty-icon" aria-hidden="true"></i>
+          <div className="empty-title">Nenhum print anexado ainda</div>
+          <div className="empty-sub">
+            Anexe o print do resultado de frequência alimentar ou rastreamento metabólico (ex: webdiet) a cada
+            consulta — o primeiro x último de cada tipo aparece comparado no Modo apresentação.
+          </div>
+          <button className="btn" onClick={() => setUploadQuestOpen(true)}>
+            <i className="ti ti-plus" aria-hidden="true"></i> Anexar primeiro print
+          </button>
+        </div>
+      ) : (
+        questionariosPorTipo.map(g => (
+          <div key={g.id} className="card" style={{ padding: 14, marginBottom: 10 }}>
+            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--dark)', marginBottom: 10 }}>{g.label}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
+              {g.itens.map(q => (
+                <div key={q.id} style={{ position: 'relative' }}>
+                  <div style={{
+                    aspectRatio: '4/3', borderRadius: 8, overflow: 'hidden',
+                    background: 'var(--bg2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    {qUrls[q.id] ? (
+                      <img src={qUrls[q.id]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <i className="ti ti-photo" style={{ fontSize: 28, color: 'var(--text3)' }} aria-hidden="true"></i>
+                    )}
+                    <button
+                      onClick={() => excluirQuestionario(q)}
+                      title="Excluir"
+                      style={{
+                        position: 'absolute', top: 4, right: 4,
+                        width: 22, height: 22, borderRadius: '50%',
+                        background: 'rgba(0,0,0,.65)', color: 'white',
+                        border: 'none', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 12, padding: 0,
+                      }}>
+                      <i className="ti ti-trash" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4, textAlign: 'center' }}>
+                    {dataBR(q.data)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
       )}
 
       {/* Hábitos e sintomas relatados */}
@@ -580,6 +790,15 @@ export default function Evolucao({ pacienteId, paciente, nutriId }) {
           nutriId={nutriId}
           onClose={() => setUploadOpen(false)}
           onSaved={async () => { setUploadOpen(false); await carregar(); }}
+        />
+      )}
+
+      {uploadQuestOpen && (
+        <UploadQuestionario
+          pacienteId={pacienteId}
+          nutriId={nutriId}
+          onClose={() => setUploadQuestOpen(false)}
+          onSaved={async () => { setUploadQuestOpen(false); await carregar(); }}
         />
       )}
 
@@ -766,6 +985,124 @@ function UploadFoto({ pacienteId, nutriId, onClose, onSaved }) {
 }
 
 /* ============================================================
+   UPLOAD DE PRINT DE QUESTIONÁRIO (frequência alimentar / rastreamento)
+   ============================================================ */
+function UploadQuestionario({ pacienteId, nutriId, onClose, onSaved }) {
+  const [tipo, setTipo] = useState(TIPOS_QUESTIONARIO[0].id);
+  const [data, setData] = useState(new Date().toISOString().slice(0, 10));
+  const [obs, setObs] = useState('');
+  const [arquivo, setArquivo] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState(null);
+
+  function escolherArquivo(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setArquivo(f);
+    setPreview(URL.createObjectURL(f));
+  }
+
+  // Cola direto da área de transferência (print copiado, ex: Cmd+Shift+4 no Mac) —
+  // evita ter que salvar o print como arquivo antes de anexar.
+  useEffect(() => {
+    function onPaste(e) {
+      const item = [...(e.clipboardData?.items ?? [])].find(i => i.type.startsWith('image/'));
+      if (!item) return;
+      const f = item.getAsFile();
+      if (!f) return;
+      e.preventDefault();
+      setArquivo(f);
+      setPreview(URL.createObjectURL(f));
+      setErro(null);
+    }
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
+
+  async function enviar() {
+    setErro(null);
+    if (!arquivo) return setErro('Selecione ou cole (Ctrl+V) a imagem do print.');
+    setBusy(true);
+    const ext = (arquivo.name.split('.').pop() || 'jpg').toLowerCase();
+    const path = `${pacienteId}/${Date.now()}-${tipo}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('questionarios_evolucao').upload(path, arquivo, { contentType: arquivo.type });
+    if (upErr) {
+      setBusy(false);
+      return setErro('Upload falhou: ' + upErr.message);
+    }
+    const { error: insErr } = await supabase.from('questionarios_evolucao').insert({
+      paciente_id: pacienteId,
+      nutri_id: nutriId,
+      storage_path: path,
+      tipo, data,
+      obs: obs.trim() || null,
+    });
+    setBusy(false);
+    if (insErr) {
+      await supabase.storage.from('questionarios_evolucao').remove([path]);
+      return setErro('Erro: ' + insErr.message);
+    }
+    onSaved();
+  }
+
+  return (
+    <ModalShell title="Anexar print de questionário"
+      subtitle="Print do resultado (ex: webdiet) — fica privado, só você e a paciente veem"
+      onClose={onClose}>
+      <label className="form-lbl">Imagem do print</label>
+      <input type="file" accept="image/*" onChange={escolherArquivo} style={{ padding: 6 }} />
+      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+        ou copie o print e cole aqui com Ctrl+V (Cmd+V no Mac) — sem precisar salvar o arquivo antes
+      </div>
+      {preview && (
+        <div style={{
+          marginTop: 8, borderRadius: 8, overflow: 'hidden',
+          background: '#000', height: 240,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <img src={preview} alt="prévia" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+        </div>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div>
+          <label className="form-lbl">Tipo</label>
+          <select value={tipo} onChange={e => setTipo(e.target.value)}>
+            {TIPOS_QUESTIONARIO.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="form-lbl">Data</label>
+          <input type="date" value={data} onChange={e => setData(e.target.value)} />
+        </div>
+      </div>
+
+      <label className="form-lbl">Observação (opcional)</label>
+      <input value={obs} onChange={e => setObs(e.target.value)}
+        placeholder="Ex: 1ª consulta" />
+
+      {erro && (
+        <div style={{
+          background: 'var(--red-bg)', color: 'var(--red)',
+          padding: '6px 10px', borderRadius: 6, fontSize: 11, marginTop: 10,
+        }}>{erro}</div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        <button className="btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={onClose}>
+          Cancelar
+        </button>
+        <button className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={enviar} disabled={busy || !arquivo}>
+          <i className="ti ti-check" aria-hidden="true"></i> {busy ? 'Enviando...' : 'Salvar print'}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+/* ============================================================
    REGISTRAR RELATO DE HÁBITO/SINTOMA
    ============================================================ */
 function ModalRegistrarHabito({ pacienteId, nutriId, itemInicial, itensExistentes, onClose, onSaved }) {
@@ -835,9 +1172,10 @@ function ModalRegistrarHabito({ pacienteId, nutriId, itemInicial, itensExistente
 /* ============================================================
    MODO APRESENTAÇÃO (fullscreen pra consulta)
    ============================================================ */
-function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaCintura, deltaPgc, totalDias, fotoA, fotoB, urls, gruposHabitos, onClose }) {
+function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaMassaMagra, deltaPgc, somaCircunferencias, totalDias, comparativos, urls, questionariosPorTipo, qUrls, feedPratosCount, checkinsRespondidos, checkinsEnviados, gruposHabitos, onClose }) {
   const primeira = avaliacoes[0];
   const ultima   = avaliacoes[avaliacoes.length - 1];
+  const questionariosComparaveis = questionariosPorTipo.filter(g => g.itens.length >= 2);
   return (
     <div style={{
       position: 'fixed', inset: 0,
@@ -870,9 +1208,15 @@ function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaCintura, delta
         }}>
           {paciente?.nome}
         </h1>
-        {totalDias > 0 && (
-          <div style={{ fontSize: 16, color: 'var(--text2)', marginBottom: 32 }}>
-            {totalDias} dias de acompanhamento
+        {(totalDias > 0 || feedPratosCount > 0 || checkinsEnviados > 0) && (
+          <div style={{ fontSize: 16, color: 'var(--text2)', marginBottom: 32, display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+            {totalDias > 0 && <span>{totalDias} dias de acompanhamento</span>}
+            {feedPratosCount > 0 && (
+              <span>{feedPratosCount} foto{feedPratosCount === 1 ? '' : 's'} enviada{feedPratosCount === 1 ? '' : 's'} no feed de pratos</span>
+            )}
+            {checkinsEnviados > 0 && (
+              <span>{checkinsRespondidos} de {checkinsEnviados} check-ins respondidos</span>
+            )}
           </div>
         )}
 
@@ -882,9 +1226,9 @@ function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaCintura, delta
           gap: 14, marginBottom: 36,
         }}>
           {[
-            { label: 'Peso',      atual: ultima?.kg,         delta: deltaPeso,    un: 'kg', melhorMenor: true },
-            { label: 'Cintura',   atual: ultima?.cintura_cm, delta: deltaCintura, un: 'cm', melhorMenor: true },
-            { label: '% gordura', atual: ultima?.pgc,        delta: deltaPgc,     un: '%', melhorMenor: true },
+            { label: 'Peso',        atual: ultima?.kg,        delta: deltaPeso,       un: 'kg', melhorMenor: true },
+            { label: '% gordura',   atual: ultima?.pgc,       delta: deltaPgc,        un: '%',  melhorMenor: true },
+            { label: 'Massa magra', atual: ultima?.mm_kg,     delta: deltaMassaMagra, un: 'kg', melhorMenor: false },
           ].map((s, i) => {
             if (!s.atual) return null;
             const corDelta = s.delta
@@ -921,10 +1265,33 @@ function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaCintura, delta
               </div>
             );
           })}
+          {somaCircunferencias != null && (
+            <div style={{
+              background: 'var(--white)', border: '0.5px solid var(--border)',
+              borderRadius: 14, padding: '24px 28px',
+            }}>
+              <div style={{
+                fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase',
+                color: 'var(--text3)', marginBottom: 10, fontWeight: 500,
+              }}>Circunferências</div>
+              <div style={{
+                fontFamily: 'var(--font-serif)', fontSize: 56, fontWeight: 600,
+                color: somaCircunferencias > 0 ? 'var(--green)' : somaCircunferencias < 0 ? 'var(--red)' : 'var(--dark)',
+                lineHeight: 1,
+              }}>
+                {somaCircunferencias > 0 ? '−' : somaCircunferencias < 0 ? '+' : ''}
+                {Math.abs(somaCircunferencias).toFixed(1).replace('.', ',')}
+                <span style={{ fontSize: 22, color: 'var(--text3)', marginLeft: 6 }}>cm</span>
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text3)', marginTop: 12, fontWeight: 400 }}>
+                {somaCircunferencias >= 0 ? 'reduzidos' : 'a mais'} no total desde {dataBR(primeira?.data)}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Fotos antes/depois grandes */}
-        {(fotoA || fotoB) && (
+        {/* Fotos antes/depois grandes, uma seção por ângulo */}
+        {comparativos.length > 0 && (
           <>
             <h2 style={{
               fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 500,
@@ -932,33 +1299,93 @@ function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaCintura, delta
             }}>
               Antes e depois
             </h2>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 32 }}>
-              {[{ foto: fotoA, label: 'Antes' }, { foto: fotoB, label: 'Depois' }].map((x, i) => (
-                <div key={i}>
-                  <div style={{
-                    fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase',
-                    color: 'var(--text3)', marginBottom: 10, fontWeight: 500,
-                  }}>{x.label}</div>
-                  <div style={{
-                    background: 'var(--bg2)', borderRadius: 14,
-                    aspectRatio: '3/4', overflow: 'hidden',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {x.foto && urls[x.foto.id] ? (
-                      <img src={urls[x.foto.id]} alt={x.label}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <span style={{ color: 'var(--text3)', fontSize: 14 }}>Sem foto</span>
-                    )}
-                  </div>
-                  {x.foto && (
-                    <div style={{ fontSize: 14, color: 'var(--text2)', marginTop: 10, textAlign: 'center' }}>
-                      {dataBR(x.foto.data_foto)}
-                    </div>
-                  )}
+            {comparativos.map(c => (
+              <div key={c.tipo} style={{ marginBottom: 28 }}>
+                <div style={{
+                  fontSize: 13, fontWeight: 600, letterSpacing: '.4px', textTransform: 'uppercase',
+                  color: 'var(--gold-deep, #a08456)', marginBottom: 14,
+                }}>
+                  {c.label}
                 </div>
-              ))}
-            </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                  {[{ foto: c.fotoA, label: 'Antes' }, { foto: c.fotoB, label: 'Depois' }].map((x, i) => (
+                    <div key={i}>
+                      <div style={{
+                        fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase',
+                        color: 'var(--text3)', marginBottom: 10, fontWeight: 500,
+                      }}>{x.label}</div>
+                      <div style={{
+                        background: 'var(--bg2)', borderRadius: 14,
+                        aspectRatio: '3/4', overflow: 'hidden',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {x.foto && urls[x.foto.id] ? (
+                          <img src={urls[x.foto.id]} alt={x.label}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <span style={{ color: 'var(--text3)', fontSize: 14 }}>Sem foto</span>
+                        )}
+                      </div>
+                      {x.foto && (
+                        <div style={{ fontSize: 14, color: 'var(--text2)', marginTop: 10, textAlign: 'center' }}>
+                          {dataBR(x.foto.data_foto)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* Questionários — primeiro x último de cada tipo */}
+        {questionariosComparaveis.length > 0 && (
+          <>
+            <h2 style={{
+              fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 500,
+              color: 'var(--dark)', marginBottom: 18,
+            }}>
+              Questionários — evolução
+            </h2>
+            {questionariosComparaveis.map(g => {
+              const prim = g.itens[0];
+              const ult = g.itens[g.itens.length - 1];
+              return (
+                <div key={g.id} style={{ marginBottom: 28 }}>
+                  <div style={{
+                    fontSize: 13, fontWeight: 600, letterSpacing: '.4px', textTransform: 'uppercase',
+                    color: 'var(--gold-deep, #a08456)', marginBottom: 14,
+                  }}>
+                    {g.label}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                    {[{ item: prim, label: 'Antes' }, { item: ult, label: 'Depois' }].map((x, i) => (
+                      <div key={i}>
+                        <div style={{
+                          fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase',
+                          color: 'var(--text3)', marginBottom: 10, fontWeight: 500,
+                        }}>{x.label}</div>
+                        <div style={{
+                          background: 'var(--bg2)', borderRadius: 14, height: 320,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                        }}>
+                          {qUrls[x.item.id] ? (
+                            <img src={qUrls[x.item.id]} alt={x.label}
+                              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                          ) : (
+                            <span style={{ color: 'var(--text3)', fontSize: 14 }}>Sem imagem</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 14, color: 'var(--text2)', marginTop: 10, textAlign: 'center' }}>
+                          {dataBR(x.item.data)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </>
         )}
 
@@ -1023,10 +1450,54 @@ function ModoApresentacao({ paciente, avaliacoes, deltaPeso, deltaCintura, delta
    ============================================================ */
 function VerCheckinModal({ envio, onClose }) {
   const respostas = envio.respostas ?? {};
+  const pontuacao = envio.mostrar_pontuacao
+    ? calcularPontuacaoSecoes(envio.perguntas, respostas)
+    : null;
+  const conclusao = pontuacao ? faixaResultado(pontuacao.total, envio.faixas_resultado) : null;
+  const dadosGrafico = envio.metas_secao && pontuacao
+    ? Object.keys(envio.metas_secao).map(secao => ({
+        label: secao,
+        a: envio.metas_secao[secao],
+        b: pontuacao.porSecao[secao]?.pontos ?? 0,
+      }))
+    : null;
+
   return (
     <ModalShell title="Respostas do check-in"
       subtitle={`Respondido em ${dataBR(envio.respondido_em)}`}
       onClose={onClose} large>
+
+      {pontuacao && (
+        <div style={{ background: 'var(--white)', border: '0.5px solid var(--border)', borderRadius: 10, padding: 16, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--dark)' }}>Resultado geral:</span>
+            <span style={{ fontSize: 20, fontWeight: 600, color: 'var(--dark)' }}>{pontuacao.total} pontos</span>
+          </div>
+          {conclusao && (
+            <div style={{
+              marginTop: 8, background: 'var(--orange-bg, #fdf1e3)', color: 'var(--orange, #b06a1e)',
+              padding: '8px 12px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+            }}>{conclusao}</div>
+          )}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+            {Object.entries(pontuacao.porSecao).map(([secao, { pontos, maximo }]) => (
+              <div key={secao} style={{
+                background: 'var(--bg2)', borderRadius: 8, padding: '6px 10px', fontSize: 12,
+                display: 'flex', gap: 8, alignItems: 'center',
+              }}>
+                <span style={{ color: 'var(--text2)' }}>{secao}</span>
+                <span style={{ fontWeight: 600, color: 'var(--dark)' }}>{pontos}/{maximo}</span>
+              </div>
+            ))}
+          </div>
+          {dadosGrafico && (
+            <div style={{ marginTop: 18 }}>
+              <GraficoBarrasDuplas dados={dadosGrafico} labelA="Recomendado" labelB="Consumido" />
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: 12 }}>
         {envio.perguntas?.map(p => (
           <div key={p.id} style={{

@@ -20,7 +20,7 @@ export default function Pacientes() {
     const [pacRes, pendRes] = await Promise.all([
       supabase
         .from('pacientes')
-        .select('id, nome, email, objetivo, tipo_plano, modalidade, created_at')
+        .select('id, nome, email, objetivo, tipo_plano, modalidade, created_at, ativa')
         .order('created_at', { ascending: false }),
       supabase
         .from('pacientes_pendentes')
@@ -221,7 +221,10 @@ export default function Pacientes() {
                         fontSize: 12, fontWeight: 600, color: 'var(--dark)'
                       }}>{iniciais(p.nome)}</div>
                       <div>
-                        <div style={{ fontWeight: 500 }}>{p.nome}</div>
+                        <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {p.nome}
+                          {p.ativa === false && <span className="pill pill-r" style={{ fontSize: 10 }}>Inativa</span>}
+                        </div>
                         <div style={{ fontSize: 12, color: 'var(--text3)' }}>{p.email}</div>
                       </div>
                     </div>

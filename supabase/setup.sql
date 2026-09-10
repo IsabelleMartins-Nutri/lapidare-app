@@ -611,6 +611,10 @@ alter table public.peso_registros
   add column if not exists dobra_suprailiaca    numeric(5,2),
   add column if not exists dobra_panturrilha    numeric(5,2),
   add column if not exists dobra_supraespinhal  numeric(5,2),
+  -- Circunferências adicionais (cm) — distintas das dobras cutâneas acima (mm)
+  add column if not exists torax_cm         numeric(5,2),
+  add column if not exists abdomen_cm       numeric(5,2),
+  add column if not exists panturrilha_cm   numeric(5,2),
   add column if not exists created_at  timestamptz not null default now();
 -- v1.14.4: torna peso opcional (permitir avaliação só com PDF)
 alter table public.peso_registros alter column kg drop not null;
@@ -674,6 +678,22 @@ create table if not exists public.pedidos_exame_modelos (
   created_at    timestamptz not null default now()
 );
 create index if not exists pedidos_exame_modelos_nutri_id_idx on public.pedidos_exame_modelos(nutri_id);
+
+-- 2.7f Questionários de evolução (prints do frequência alimentar e
+-- rastreamento metabólico feitos fora do app, ex: webdiet) — a nutri
+-- anexa a imagem do resultado a cada consulta, pra comparar no Modo
+-- Apresentação (primeiro x último de cada tipo).
+create table if not exists public.questionarios_evolucao (
+  id            uuid primary key default gen_random_uuid(),
+  paciente_id   uuid not null references public.pacientes(id) on delete cascade,
+  nutri_id      uuid references public.nutris(id) on delete set null,
+  tipo          text not null check (tipo in ('frequencia_alimentar', 'rastreamento_metabolico')),
+  data          date not null default current_date,
+  storage_path  text not null,
+  obs           text,
+  created_at    timestamptz not null default now()
+);
+create index if not exists questionarios_evolucao_paciente_id_idx on public.questionarios_evolucao(paciente_id, tipo, data);
 
 -- 2.8 Feed de pratos (fotos) ---------------------------------------
 create table if not exists public.feed_pratos (
@@ -808,10 +828,12 @@ create table if not exists public.pacientes_pendentes (
   tipo_plano    text,
   modalidade    text,
   obs           text,
+  objetivo_detalhe text,
   status        text not null default 'pendente' check (status in ('pendente', 'enviado', 'ativado')),
   created_at    timestamptz not null default now(),
   unique (nutri_id, email)
 );
+alter table public.pacientes_pendentes add column if not exists objetivo_detalhe text;
 create index if not exists pacientes_pendentes_nutri_idx on public.pacientes_pendentes(nutri_id, status);
 create index if not exists pacientes_pendentes_email_idx on public.pacientes_pendentes(email);
 
@@ -832,6 +854,10 @@ create table if not exists public.checkin_templates (
 alter table public.checkin_templates drop constraint if exists checkin_templates_nutri_id_paciente_id_key;
 -- Compat: adiciona is_padrao se a tabela já existia sem ele
 alter table public.checkin_templates add column if not exists is_padrao boolean not null default false;
+-- Pontuação por seção (rastreamento metabólico, frequência alimentar, etc.)
+alter table public.checkin_templates add column if not exists mostrar_pontuacao boolean not null default false;
+alter table public.checkin_templates add column if not exists faixas_resultado jsonb; -- [{ate, texto}]
+alter table public.checkin_templates add column if not exists metas_secao jsonb;      -- {secao: meta_numero}
 create index if not exists checkin_templates_nutri_idx on public.checkin_templates(nutri_id);
 -- Garante que cada nutri tenha no máximo UM template marcado como padrão
 create unique index if not exists checkin_templates_padrao_unique
@@ -910,6 +936,7 @@ alter table public.exames_imagem   enable row level security;
 alter table public.pedidos_exame   enable row level security;
 alter table public.pedidos_exame_modelos enable row level security;
 alter table public.feed_pratos     enable row level security;
+alter table public.questionarios_evolucao enable row level security;
 alter table public.gastos          enable row level security;
 alter table public.vendas          enable row level security;
 alter table public.parcelas        enable row level security;
@@ -1207,6 +1234,31 @@ create policy fotos_evolucao_delete on public.fotos_evolucao
     or exists (select 1 from public.pacientes p where p.id = paciente_id and p.nutri_id = auth.uid())
   );
 
+-- 4.10c questionarios_evolucao (mesmo padrão de fotos_evolucao)
+drop policy if exists questionarios_evolucao_select on public.questionarios_evolucao;
+create policy questionarios_evolucao_select on public.questionarios_evolucao
+  for select using (
+    paciente_id = auth.uid()
+    or exists (select 1 from public.pacientes p where p.id = paciente_id and p.nutri_id = auth.uid())
+  );
+
+drop policy if exists questionarios_evolucao_insert_nutri on public.questionarios_evolucao;
+create policy questionarios_evolucao_insert_nutri on public.questionarios_evolucao
+  for insert with check (
+    exists (select 1 from public.pacientes p where p.id = paciente_id and p.nutri_id = auth.uid())
+  );
+
+drop policy if exists questionarios_evolucao_insert_paciente on public.questionarios_evolucao;
+create policy questionarios_evolucao_insert_paciente on public.questionarios_evolucao
+  for insert with check (paciente_id = auth.uid());
+
+drop policy if exists questionarios_evolucao_delete on public.questionarios_evolucao;
+create policy questionarios_evolucao_delete on public.questionarios_evolucao
+  for delete using (
+    paciente_id = auth.uid()
+    or exists (select 1 from public.pacientes p where p.id = paciente_id and p.nutri_id = auth.uid())
+  );
+
 -- 4.10c pacientes_pendentes (só a nutri dona) ----------------------
 drop policy if exists pacientes_pendentes_all_nutri on public.pacientes_pendentes;
 create policy pacientes_pendentes_all_nutri on public.pacientes_pendentes
@@ -1270,7 +1322,7 @@ begin
       if found then
         -- Migra dados da importação, preenchendo com o que veio no signup
         insert into public.pacientes (
-          id, nutri_id, nome, email, objetivo, tipo_plano, modalidade
+          id, nutri_id, nome, email, objetivo, objetivo_detalhe, tipo_plano, modalidade
         )
         values (
           new.id,
@@ -1278,6 +1330,7 @@ begin
           coalesce(new.raw_user_meta_data ->> 'nome',       v_pendente.nome,       new.email),
           new.email,
           coalesce(new.raw_user_meta_data ->> 'objetivo',   v_pendente.objetivo),
+          coalesce(new.raw_user_meta_data ->> 'objetivo_detalhe', v_pendente.objetivo_detalhe),
           coalesce(new.raw_user_meta_data ->> 'tipo_plano', v_pendente.tipo_plano),
           coalesce(new.raw_user_meta_data ->> 'modalidade', v_pendente.modalidade)
         )
@@ -1288,7 +1341,7 @@ begin
           where id = v_pendente.id;
       else
         insert into public.pacientes (
-          id, nutri_id, nome, email, objetivo, tipo_plano, modalidade
+          id, nutri_id, nome, email, objetivo, objetivo_detalhe, tipo_plano, modalidade
         )
         values (
           new.id,
@@ -1296,6 +1349,7 @@ begin
           coalesce(new.raw_user_meta_data ->> 'nome', new.email),
           new.email,
           new.raw_user_meta_data ->> 'objetivo',
+          new.raw_user_meta_data ->> 'objetivo_detalhe',
           new.raw_user_meta_data ->> 'tipo_plano',
           new.raw_user_meta_data ->> 'modalidade'
         )
@@ -1331,6 +1385,10 @@ on conflict (id) do nothing;
 
 insert into storage.buckets (id, name, public)
 values ('fotos_evolucao', 'fotos_evolucao', false)
+on conflict (id) do nothing;
+
+insert into storage.buckets (id, name, public)
+values ('questionarios_evolucao', 'questionarios_evolucao', false)
 on conflict (id) do nothing;
 
 
@@ -1432,6 +1490,48 @@ drop policy if exists fotos_evolucao_storage_delete on storage.objects;
 create policy fotos_evolucao_storage_delete on storage.objects
   for delete using (
     bucket_id = 'fotos_evolucao'
+    and (
+      split_part(name, '/', 1) = auth.uid()::text
+      or split_part(name, '/', 1) in (
+        select id::text from public.pacientes where nutri_id = auth.uid()
+      )
+    )
+  );
+
+-- 7.4 questionarios_evolucao (mesmo padrão de fotos_evolucao) ------
+
+drop policy if exists questionarios_evolucao_storage_select on storage.objects;
+create policy questionarios_evolucao_storage_select on storage.objects
+  for select using (
+    bucket_id = 'questionarios_evolucao'
+    and (
+      split_part(name, '/', 1) = auth.uid()::text
+      or split_part(name, '/', 1) in (
+        select id::text from public.pacientes where nutri_id = auth.uid()
+      )
+    )
+  );
+
+drop policy if exists questionarios_evolucao_storage_insert_paciente on storage.objects;
+create policy questionarios_evolucao_storage_insert_paciente on storage.objects
+  for insert with check (
+    bucket_id = 'questionarios_evolucao'
+    and split_part(name, '/', 1) = auth.uid()::text
+  );
+
+drop policy if exists questionarios_evolucao_storage_insert_nutri on storage.objects;
+create policy questionarios_evolucao_storage_insert_nutri on storage.objects
+  for insert with check (
+    bucket_id = 'questionarios_evolucao'
+    and split_part(name, '/', 1) in (
+      select id::text from public.pacientes where nutri_id = auth.uid()
+    )
+  );
+
+drop policy if exists questionarios_evolucao_storage_delete on storage.objects;
+create policy questionarios_evolucao_storage_delete on storage.objects
+  for delete using (
+    bucket_id = 'questionarios_evolucao'
     and (
       split_part(name, '/', 1) = auth.uid()::text
       or split_part(name, '/', 1) in (
@@ -1589,6 +1689,8 @@ alter table public.pacientes        add column if not exists nascimento       da
 alter table public.pacientes        add column if not exists termo_aceito_em  timestamptz;
 alter table public.pacientes        add column if not exists termo_versao     text;
 alter table public.pacientes        add column if not exists sexo             text default 'feminino' check (sexo in ('feminino', 'masculino'));
+alter table public.pacientes        add column if not exists ativa            boolean not null default true;
+alter table public.pacientes        add column if not exists objetivo_detalhe text;
 -- condicoes: lista de etiquetas clínicas com categoria — {texto, categoria}.
 -- Bloco trata 3 casos: coluna não existe (cria jsonb); coluna existe como
 -- text[] de uma versão anterior (converte preservando os dados, categoria
@@ -1635,6 +1737,12 @@ alter table public.checkin_envios   add column if not exists tipo text not null 
 alter table public.checkin_envios   drop constraint if exists checkin_envios_tipo_check;
 alter table public.checkin_envios
   add constraint checkin_envios_tipo_check check (tipo in ('recorrente', 'pre_consulta', 'atendimento'));
+-- Snapshot da config de pontuação do template no momento do envio (mesmo
+-- princípio de `perguntas` — assim o resultado calculado não muda se a nutri
+-- editar o template depois de já ter pacientes com esse questionário respondido).
+alter table public.checkin_envios   add column if not exists mostrar_pontuacao boolean not null default false;
+alter table public.checkin_envios   add column if not exists faixas_resultado jsonb;
+alter table public.checkin_envios   add column if not exists metas_secao jsonb;
 
 alter table public.pacientes_pendentes
   add column if not exists token uuid not null default gen_random_uuid();
@@ -1702,6 +1810,23 @@ create table if not exists public.followups (
 );
 create index if not exists followups_paciente_idx on public.followups(paciente_id, data desc, created_at desc);
 create index if not exists followups_nutri_idx    on public.followups(nutri_id);
+-- campos: follow-up estruturado com perguntas fixas (aderência, condutas, suplementação),
+-- em vez do texto livre único em `conteudo`. Follow-ups antigos/de modelo continuam só com `conteudo`.
+alter table public.followups add column if not exists campos jsonb;
+
+-- Meta definida numa consulta, pra comparar com o peso registrado na consulta
+-- seguinte — visão rápida de "combinamos isso, ela voltou com quanto".
+create table if not exists public.metas_consulta (
+  id            uuid primary key default gen_random_uuid(),
+  paciente_id   uuid not null references public.pacientes(id) on delete cascade,
+  nutri_id      uuid references public.nutris(id) on delete set null,
+  consulta_id   uuid references public.consultas(id) on delete set null,
+  data          date not null default current_date,
+  meta          text not null,
+  peso_alvo_kg  numeric(5,2),
+  created_at    timestamptz not null default now()
+);
+create index if not exists metas_consulta_paciente_id_idx on public.metas_consulta(paciente_id, data);
 
 -- Evolução de hábitos/sintomas relatados — a nutri escreve manualmente o
 -- que a paciente relatou sobre um item (ex: "Intestino", "Sono") a cada
@@ -1753,6 +1878,7 @@ alter table public.ebooks              enable row level security;
 alter table public.ebooks_pacientes    enable row level security;
 alter table public.followup_templates  enable row level security;
 alter table public.followups           enable row level security;
+alter table public.metas_consulta      enable row level security;
 alter table public.evolucao_habitos    enable row level security;
 alter table public.suplementos         enable row level security;
 alter table public.suplementos_logs    enable row level security;
@@ -1784,6 +1910,9 @@ create policy followup_templates_all_nutri on public.followup_templates for all
   using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
 drop policy if exists followups_all_nutri on public.followups;
 create policy followups_all_nutri on public.followups for all
+  using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
+drop policy if exists metas_consulta_all_nutri on public.metas_consulta;
+create policy metas_consulta_all_nutri on public.metas_consulta for all
   using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
 drop policy if exists evolucao_habitos_all_nutri on public.evolucao_habitos;
 create policy evolucao_habitos_all_nutri on public.evolucao_habitos for all
@@ -1890,13 +2019,13 @@ drop function if exists public.buscar_pendente_por_token(uuid);
 create or replace function public.buscar_pendente_por_token(p_token uuid)
 returns table(
   nome text, email text, nascimento date, sexo text,
-  objetivo text, tipo_plano text, modalidade text,
+  objetivo text, objetivo_detalhe text, tipo_plano text, modalidade text,
   nutri_id uuid, nutri_nome text, status text
 )
 language sql security definer set search_path = public
 as $$
   select pp.nome, pp.email, pp.nascimento, coalesce(pp.sexo, 'feminino') as sexo,
-    pp.objetivo, pp.tipo_plano, pp.modalidade, pp.nutri_id,
+    pp.objetivo, pp.objetivo_detalhe, pp.tipo_plano, pp.modalidade, pp.nutri_id,
     n.nome as nutri_nome, pp.status
   from public.pacientes_pendentes pp
   join public.nutris n on n.id = pp.nutri_id
