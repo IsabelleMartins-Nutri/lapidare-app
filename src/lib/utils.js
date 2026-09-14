@@ -308,7 +308,7 @@ export function indexarSubstituicoes(dados) {
  *                  vencimento mensal nominal (mesmo motivo do credito1x)
  *  asaas (recorrente) → N meses, vencimento no dia escolhido
  */
-export function gerarParcelas({ forma_pgto, valor_total, data_venda, n_parcelas, dia_venc }) {
+export function gerarParcelas({ forma_pgto, valor_total, data_venda, n_parcelas }) {
   const valor = Number(valor_total);
   const dv = new Date(data_venda + 'T00:00:00');
 
@@ -349,15 +349,15 @@ export function gerarParcelas({ forma_pgto, valor_total, data_venda, n_parcelas,
   }
 
   if (forma_pgto === 'asaas') {
+    // Recorrente Asaas: cada repasse cai 32 dias depois do anterior (não é
+    // um "dia fixo do mês" — é o tempo real que o Asaas leva pra depositar
+    // cada cobrança), mesmo princípio já usado em credito1x/parcelado.
     const n = Math.max(1, Math.min(12, Number(n_parcelas) || 3));
-    const dia = Number(dia_venc) || 15;
     const base = Math.floor((valor * 100) / n) / 100;
     const out = [];
     for (let i = 0; i < n; i++) {
-      const venc = addMonths(dv, i);
-      venc.setDate(Math.min(dia, 28));
       const v = i === n - 1 ? Number((valor - base * (n - 1)).toFixed(2)) : base;
-      out.push({ numero: i + 1, valor: v, vencimento: fmtDate(venc) });
+      out.push({ numero: i + 1, valor: v, vencimento: fmtDate(addDays(dv, 32 * (i + 1))) });
     }
     return out;
   }

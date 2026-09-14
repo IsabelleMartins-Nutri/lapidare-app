@@ -793,8 +793,10 @@ create table if not exists public.parcelas (
   vencimento    date not null,
   status        text not null default 'pendente' check (status in ('pago', 'pendente', 'atrasado')),
   data_pgto     date,
-  obs           text
+  obs           text,
+  valor_liquido numeric(10,2)
 );
+alter table public.parcelas add column if not exists valor_liquido numeric(10,2);
 create index if not exists parcelas_nutri_id_idx on public.parcelas(nutri_id, vencimento);
 create index if not exists parcelas_venda_id_idx on public.parcelas(venda_id);
 

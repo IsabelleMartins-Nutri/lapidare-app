@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase.js';
 import { useSession } from '../../lib/session.jsx';
 import {
-  brl, dataBR,
+  brl, dataBR, mesAnoExtenso,
   gerarParcelas, statusParcela,
   labelFormaPgto, iconFormaPgto, FORMAS_PGTO_LIST,
 } from '../../lib/utils.js';
@@ -13,6 +13,16 @@ const STATUS_INFO = {
   pendente:  { label: 'Pendente',  bg: '#f5f0e8',         color: 'var(--text3)',  icon: 'clock' },
   atrasado:  { label: 'Atrasado',  bg: 'var(--red-bg)',   color: 'var(--red)',    icon: 'alert-triangle' },
 };
+
+// Valor líquido "efetivo" de uma parcela: o que a nutri digitou manualmente,
+// ou — se for Pix, que não tem taxa nenhuma — o próprio valor bruto. Pra
+// qualquer outra forma sem valor líquido preenchido ainda, retorna null
+// (não dá pra saber quanto vai cair líquido antes de acontecer).
+function liquidoEfetivo(parcela, formaPgto) {
+  if (parcela.valor_liquido != null) return Number(parcela.valor_liquido);
+  if (formaPgto === 'pix') return Number(parcela.valor);
+  return null;
+}
 
 export default function Financeiro() {
   const { user } = useSession();
@@ -68,6 +78,14 @@ export default function Financeiro() {
   }
   useEffect(() => { carregar(); }, [user]);
 
+  // Forma de pagamento de cada venda, por id — usado pra saber se uma
+  // parcela é Pix (líquido = bruto sempre, sem taxa) nos cálculos abaixo.
+  const formaPorVenda = useMemo(() => {
+    const m = {};
+    (vendas ?? []).forEach(v => { m[v.id] = v.forma_pgto; });
+    return m;
+  }, [vendas]);
+
   // Agrupa parcelas por venda
   const parcelasPorVenda = useMemo(() => {
     const m = {};
@@ -102,6 +120,7 @@ export default function Financeiro() {
     const fimMes = new Date(ano, mes + 1, 0); fimMes.setHours(23, 59, 59, 999);
 
     let recebido = 0, recebidoN = 0;
+    let recebidoLiquido = 0, recebidoLiquidoN = 0;
     let aReceber = 0, aReceberN = 0;
     let atrasado = 0, atrasadoN = 0;
 
@@ -111,6 +130,8 @@ export default function Financeiro() {
       const pgto = p.data_pgto ? new Date(p.data_pgto + 'T00:00:00') : null;
       if (s === 'pago' && pgto && pgto >= inicioMes && pgto <= fimMes) {
         recebido += Number(p.valor); recebidoN++;
+        const liq = liquidoEfetivo(p, formaPorVenda[p.venda_id]);
+        if (liq != null) { recebidoLiquido += liq; recebidoLiquidoN++; }
       }
       if (s === 'pendente' && venc && venc >= inicioMes && venc <= fimMes) {
         aReceber += Number(p.valor); aReceberN++;
@@ -119,8 +140,27 @@ export default function Financeiro() {
         atrasado += Number(p.valor); atrasadoN++;
       }
     });
-    return { recebido, recebidoN, aReceber, aReceberN, atrasado, atrasadoN };
-  }, [parcelas]);
+    return { recebido, recebidoN, recebidoLiquido, recebidoLiquidoN, aReceber, aReceberN, atrasado, atrasadoN };
+  }, [parcelas, formaPorVenda]);
+
+  // Previsão por mês — agrupa toda parcela ainda não paga (a receber ou em
+  // atraso) pelo mês do vencimento, pra ver de uma vez quanto entra em cada
+  // mês futuro (fica mais útil agora que as datas são ajustáveis uma a uma).
+  const previsaoPorMes = useMemo(() => {
+    const mapa = {};
+    parcelas.forEach(p => {
+      const s = statusParcela(p);
+      if (s === 'pago' || !p.vencimento) return;
+      const chave = p.vencimento.slice(0, 7); // "YYYY-MM"
+      if (!mapa[chave]) mapa[chave] = { chave, total: 0, totalLiquido: 0, totalAtrasado: 0, n: 0, nLiquido: 0 };
+      mapa[chave].total += Number(p.valor);
+      mapa[chave].n++;
+      if (s === 'atrasado') mapa[chave].totalAtrasado += Number(p.valor);
+      const liq = liquidoEfetivo(p, formaPorVenda[p.venda_id]);
+      if (liq != null) { mapa[chave].totalLiquido += liq; mapa[chave].nLiquido++; }
+    });
+    return Object.values(mapa).sort((a, b) => a.chave.localeCompare(b.chave));
+  }, [parcelas, formaPorVenda]);
 
   const toggleExpand = (id) => setVendasExpandidas(s => ({ ...s, [id]: !s[id] }));
 
@@ -161,7 +201,10 @@ export default function Financeiro() {
         <div className="stat-card">
           <div className="stat-label">Recebido este mês</div>
           <div className="stat-val">{brl(stats.recebido)}</div>
-          <div className="stat-sub">{stats.recebidoN} pagamento{stats.recebidoN === 1 ? '' : 's'}</div>
+          <div className="stat-sub">
+            {stats.recebidoN} pagamento{stats.recebidoN === 1 ? '' : 's'}
+            {stats.recebidoLiquidoN > 0 && <> · líquido {brl(stats.recebidoLiquido)}</>}
+          </div>
         </div>
         <div className="stat-card">
           <div className="stat-label">A receber este mês</div>
@@ -190,6 +233,38 @@ export default function Financeiro() {
             <div className="al-d">
               Entre em contato com as pacientes correspondentes para regularizar.
             </div>
+          </div>
+        </div>
+      )}
+
+      {previsaoPorMes.length > 0 && (
+        <div className="card" style={{ padding: '14px 16px', marginBottom: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--dark)', marginBottom: 10 }}>
+            Previsão por mês
+          </div>
+          <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 2 }}>
+            {previsaoPorMes.map(m => {
+              const [ano, mes] = m.chave.split('-');
+              const label = mesAnoExtenso(new Date(Number(ano), Number(mes) - 1, 1));
+              return (
+                <div key={m.chave} style={{
+                  flex: '0 0 auto', minWidth: 148,
+                  background: 'var(--bg2)', borderRadius: 8, padding: '10px 12px',
+                }}>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'capitalize' }}>{label}</div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--dark)', marginTop: 2 }}>
+                    {brl(m.total)} <span style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 400 }}>bruto</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 1 }}>
+                    {m.nLiquido > 0 ? brl(m.totalLiquido) : '—'} <span style={{ fontSize: 10, color: 'var(--text3)' }}>líquido{m.nLiquido < m.n ? ' (parcial)' : ''}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: m.totalAtrasado > 0 ? 'var(--red)' : 'var(--text3)', marginTop: 4 }}>
+                    {m.n} parcela{m.n === 1 ? '' : 's'}
+                    {m.totalAtrasado > 0 && <> · {brl(m.totalAtrasado)} atrasado</>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -238,8 +313,11 @@ export default function Financeiro() {
         vendasFiltradas.map(v => {
           const ps = parcelasPorVenda[v.id] ?? [];
           const aberta = vendasExpandidas[v.id];
-          const totalPago = ps.filter(p => p.status === 'pago').reduce((a, p) => a + Number(p.valor), 0);
-          const pagas = ps.filter(p => p.status === 'pago').length;
+          const pagasArr = ps.filter(p => p.status === 'pago');
+          const totalPago = pagasArr.reduce((a, p) => a + Number(p.valor), 0);
+          const pagasComLiquido = pagasArr.filter(p => liquidoEfetivo(p, v.forma_pgto) != null);
+          const totalPagoLiquido = pagasComLiquido.reduce((a, p) => a + liquidoEfetivo(p, v.forma_pgto), 0);
+          const pagas = pagasArr.length;
           return (
             <div key={v.id} className="card" style={{ padding: 0 }}>
               <div
@@ -269,6 +347,7 @@ export default function Financeiro() {
                   <div style={{ fontSize: 15, fontWeight: 600 }}>{brl(v.valor_total)}</div>
                   <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                     {pagas}/{ps.length} · {brl(totalPago)}
+                    {pagasComLiquido.length > 0 && <> · líq. {brl(totalPagoLiquido)}</>}
                   </div>
                 </div>
                 <i className="ti ti-chevron-right" style={{
@@ -309,6 +388,7 @@ export default function Financeiro() {
                           {p.data_pgto && (
                             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
                               pago em {dataBR(p.data_pgto)}
+                              {liquidoEfetivo(p, v.forma_pgto) != null && <> · líquido {brl(liquidoEfetivo(p, v.forma_pgto))}</>}
                             </div>
                           )}
                           {p.obs && (
@@ -406,7 +486,7 @@ function NovaVendaModal({ pacientes, servicos, nutriId, onClose, onSaved }) {
   const [forma, setForma] = useState('pix');
   const [nParcelas, setNParcelas] = useState(3);
   const [nMeses, setNMeses] = useState(3);
-  const [diaVenc, setDiaVenc] = useState(15);
+  const [datasEditadas, setDatasEditadas] = useState({});
   const [obs, setObs] = useState('');
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState(null);
@@ -429,16 +509,24 @@ function NovaVendaModal({ pacientes, servicos, nutriId, onClose, onSaved }) {
 
   const valorNum = Number(String(valor).replace(',', '.')) || 0;
 
-  const parcelasPreview = useMemo(() => {
+  const parcelasAuto = useMemo(() => {
     if (!valorNum || !data) return [];
     return gerarParcelas({
       forma_pgto: forma,
       valor_total: valorNum,
       data_venda: data,
       n_parcelas: forma === 'parcelado' ? nParcelas : (forma === 'asaas' ? nMeses : 1),
-      dia_venc: diaVenc,
     });
-  }, [forma, valorNum, data, nParcelas, nMeses, diaVenc]);
+  }, [forma, valorNum, data, nParcelas, nMeses]);
+
+  // Se algum parâmetro que afeta o cálculo mudar, descarta os ajustes manuais
+  // de data feitos antes (senão a parcela 2 antiga pode ficar "grudada" numa
+  // parcela 5 nova, por exemplo).
+  useEffect(() => { setDatasEditadas({}); }, [forma, valorNum, data, nParcelas, nMeses]);
+
+  const parcelasPreview = useMemo(() => (
+    parcelasAuto.map(p => ({ ...p, vencimento: datasEditadas[p.numero] ?? p.vencimento }))
+  ), [parcelasAuto, datasEditadas]);
 
   async function salvar() {
     setErro(null);
@@ -573,33 +661,35 @@ function NovaVendaModal({ pacientes, servicos, nutriId, onClose, onSaved }) {
 
       {forma === 'asaas' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div>
-              <label className="form-lbl">Número de meses</label>
-              <select value={nMeses} onChange={e => setNMeses(Number(e.target.value))}>
-                {[1, 2, 3, 4, 5, 6, 12].map(n => <option key={n} value={n}>{n} {n === 1 ? 'mês' : 'meses'}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="form-lbl">Dia do vencimento</label>
-              <select value={diaVenc} onChange={e => setDiaVenc(Number(e.target.value))}>
-                {[5, 10, 15, 20, 25, 28].map(d => <option key={d} value={d}>dia {d}</option>)}
-              </select>
-            </div>
+          <label className="form-lbl">Número de meses</label>
+          <select value={nMeses} onChange={e => setNMeses(Number(e.target.value))}>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => <option key={n} value={n}>{n} {n === 1 ? 'mês' : 'meses'}</option>)}
+          </select>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>
+            Cada parcela cai 32 dias depois da anterior (tempo real do repasse do Asaas) — pode ajustar qualquer data abaixo.
           </div>
         </>
       )}
 
       {parcelasPreview.length > 0 && (
         <div style={{
-          background: 'var(--bg2)', borderRadius: 6, padding: '8px 10px',
-          marginTop: 10, fontSize: 13, color: 'var(--text2)',
+          background: 'var(--bg2)', borderRadius: 6, padding: '10px 10px',
+          marginTop: 10,
         }}>
-          <div style={{ fontWeight: 500, marginBottom: 4 }}>Preview:</div>
-          {parcelasPreview.length === 1
-            ? `1 parcela única de ${brl(parcelasPreview[0].valor)} no dia ${dataBR(parcelasPreview[0].vencimento)}`
-            : `${parcelasPreview.length}x de ${brl(parcelasPreview[0].valor)}${parcelasPreview[0].valor !== parcelasPreview[parcelasPreview.length-1].valor ? ` (última ${brl(parcelasPreview[parcelasPreview.length-1].valor)})` : ''} — primeira ${dataBR(parcelasPreview[0].vencimento)} / última ${dataBR(parcelasPreview[parcelasPreview.length-1].vencimento)}`
-          }
+          <div style={{ fontWeight: 500, marginBottom: 8, fontSize: 13, color: 'var(--text2)' }}>
+            {parcelasPreview.length === 1 ? 'Vencimento' : `${parcelasPreview.length} parcelas — ajuste as datas se precisar`}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {parcelasPreview.map(p => (
+              <div key={p.numero} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--text3)', width: 92, flexShrink: 0 }}>
+                  {parcelasPreview.length === 1 ? 'Valor único' : `Parcela ${p.numero}`} · {brl(p.valor)}
+                </span>
+                <input type="date" value={p.vencimento} style={{ margin: 0, flex: 1 }}
+                  onChange={e => setDatasEditadas(d => ({ ...d, [p.numero]: e.target.value }))} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -633,6 +723,7 @@ function EditarParcelaModal({ parcela, venda, onClose, onSaved }) {
   const [status, setStatus] = useState(parcela.status);
   const [dataPgto, setDataPgto] = useState(parcela.data_pgto ?? new Date().toISOString().slice(0, 10));
   const [valor, setValor] = useState(String(parcela.valor));
+  const [valorLiquido, setValorLiquido] = useState(parcela.valor_liquido != null ? String(parcela.valor_liquido) : '');
   const [obs, setObs] = useState(parcela.obs ?? '');
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState(null);
@@ -640,12 +731,17 @@ function EditarParcelaModal({ parcela, venda, onClose, onSaved }) {
   async function salvar() {
     setErro(null);
     setBusy(true);
+    const valorNum = Number(String(valor).replace(',', '.')) || parcela.valor;
+    const liquidoNum = venda.forma_pgto === 'pix'
+      ? valorNum
+      : (valorLiquido.trim() ? (Number(String(valorLiquido).replace(',', '.')) || null) : null);
     const { error } = await supabase
       .from('parcelas')
       .update({
         status,
         data_pgto: status === 'pago' ? dataPgto : null,
-        valor: Number(String(valor).replace(',', '.')) || parcela.valor,
+        valor: valorNum,
+        valor_liquido: liquidoNum,
         obs: obs.trim() || null,
       })
       .eq('id', parcela.id);
@@ -696,9 +792,22 @@ function EditarParcelaModal({ parcela, venda, onClose, onSaved }) {
         </>
       )}
 
-      <label className="form-lbl">Valor recebido (R$)</label>
+      <label className="form-lbl">Valor bruto (R$)</label>
       <input inputMode="decimal" value={valor} onChange={e => setValor(e.target.value)}
         placeholder="Pode diferir se adiantou ou pagou parcial" />
+
+      <label className="form-lbl">Valor líquido {venda.forma_pgto === 'pix' ? '' : '(opcional)'}</label>
+      {venda.forma_pgto === 'pix' ? (
+        <>
+          <input inputMode="decimal" value={valor} disabled style={{ opacity: .6 }} />
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>
+            Pix não tem taxa — o líquido é sempre igual ao bruto.
+          </div>
+        </>
+      ) : (
+        <input inputMode="decimal" value={valorLiquido} onChange={e => setValorLiquido(e.target.value)}
+          placeholder="O que efetivamente caiu na conta, depois da taxa" />
+      )}
 
       <label className="form-lbl">Observação</label>
       <input value={obs} onChange={e => setObs(e.target.value)}
