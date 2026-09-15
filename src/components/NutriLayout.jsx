@@ -28,6 +28,10 @@ const NAV_CONFIG = [
     group: 'Gestão do consultório',
     items: [
       { id: 'cerebro',          path: '/nutri/cerebro',         label: 'Cérebro do negócio', icon: 'brain' },
+      { id: 'marketing',        path: '/nutri/marketing',       label: 'Marketing',           icon: 'speakerphone' },
+      { id: 'redes_sociais',    path: '/nutri/redes-sociais',   label: 'Redes Sociais',       icon: 'share' },
+      { id: 'comercial',        path: '/nutri/comercial',       label: 'Comercial',           icon: 'briefcase' },
+      { id: 'oportunidades',    path: '/nutri/oportunidades',   label: 'Oportunidades',       icon: 'target' },
       { id: 'servicos',         path: '/nutri/servicos',        label: 'Meus serviços',       icon: 'settings' },
       { id: 'alimentos',        path: '/nutri/alimentos',       label: 'Meus alimentos',      icon: 'apple' },
       { id: 'beneficios',       path: '/nutri/beneficios',      label: 'Benefícios',          icon: 'gift' },

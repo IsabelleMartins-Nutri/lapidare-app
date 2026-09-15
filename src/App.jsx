@@ -23,6 +23,10 @@ import PrescricoesNutri from './app/nutri/Prescricoes.jsx';
 import Checkins from './app/nutri/Checkins.jsx';
 import Cadastrar from './app/nutri/Cadastrar.jsx';
 import Cerebro from './app/nutri/Cerebro.jsx';
+import Comercial from './app/nutri/Comercial.jsx';
+import Marketing from './app/nutri/Marketing.jsx';
+import RedesSociais from './app/nutri/RedesSociais.jsx';
+import Oportunidades from './app/nutri/Oportunidades.jsx';
 import Servicos from './app/nutri/Servicos.jsx';
 import MeusAlimentos from './app/nutri/MeusAlimentos.jsx';
 import BeneficiosNutri from './app/nutri/Beneficios.jsx';
@@ -75,6 +79,10 @@ export default function App() {
             <Route path="/nutri/questionarios" element={<Navigate to="/nutri/checkins" replace />} />
             <Route path="/nutri/cadastrar" element={<Cadastrar />} />
             <Route path="/nutri/cerebro" element={<Cerebro />} />
+            <Route path="/nutri/comercial" element={<Comercial />} />
+            <Route path="/nutri/marketing" element={<Marketing />} />
+            <Route path="/nutri/redes-sociais" element={<RedesSociais />} />
+            <Route path="/nutri/oportunidades" element={<Oportunidades />} />
             <Route path="/nutri/servicos" element={<Servicos />} />
             <Route path="/nutri/alimentos" element={<MeusAlimentos />} />
             <Route path="/nutri/beneficios" element={<BeneficiosNutri />} />

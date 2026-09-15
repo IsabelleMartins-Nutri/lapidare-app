@@ -1809,6 +1809,114 @@ create table if not exists public.receitas_pacientes (
 create index if not exists receitas_pacientes_paciente_idx on public.receitas_pacientes(paciente_id);
 create index if not exists receitas_pacientes_receita_idx  on public.receitas_pacientes(receita_id);
 
+-- 10.2b CRM de leads comerciais (aba "Comercial" + "Oportunidades") -----
+-- Acompanha contatos desde o primeiro contato até virarem paciente (ou
+-- não) — separado de `pacientes_pendentes`, que é só o pré-cadastro
+-- operacional de quem já fechou.
+create table if not exists public.leads (
+  id                     uuid primary key default gen_random_uuid(),
+  nutri_id               uuid not null references public.nutris(id) on delete cascade,
+  nome                   text not null,
+  contato                text,
+  origem                 text,
+  data_primeiro_contato  date not null default current_date,
+  objetivo               text,
+  temperatura            text check (temperatura in ('quente', 'morno', 'frio')),
+  follow_up_1            date,
+  follow_up_2            date,
+  follow_up_3            date,
+  proxima_acao           text,
+  status                 text not null default 'novo_contato',
+  marcou_consulta_pos_sc text check (marcou_consulta_pos_sc in ('sim', 'nao')),
+  motivo_perda           text,
+  motivos_ganho          jsonb not null default '[]',
+  observacao             text,
+  pendente_id            uuid references public.pacientes_pendentes(id) on delete set null,
+  convertido_em          timestamptz,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now()
+);
+create index if not exists leads_nutri_idx on public.leads(nutri_id, created_at desc);
+
+alter table public.leads enable row level security;
+drop policy if exists leads_all_nutri on public.leads;
+create policy leads_all_nutri on public.leads for all
+  using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
+
+-- 10.2c Marketing: campanhas de tráfego, agenda editorial e desempenho de posts
+create table if not exists public.campanhas_trafego (
+  id                 uuid primary key default gen_random_uuid(),
+  nutri_id           uuid not null references public.nutris(id) on delete cascade,
+  nome               text not null,
+  plataforma         text,
+  valor_investido    numeric(10,2) not null default 0,
+  contatos_gerados   integer not null default 0,
+  seguidores_gerados integer not null default 0,
+  data_inicio        date not null default current_date,
+  data_fim           date,
+  obs                text,
+  created_at         timestamptz not null default now()
+);
+create index if not exists campanhas_trafego_nutri_idx on public.campanhas_trafego(nutri_id, data_inicio desc);
+
+create table if not exists public.agenda_editorial (
+  id               uuid primary key default gen_random_uuid(),
+  nutri_id         uuid not null references public.nutris(id) on delete cascade,
+  data             date not null,
+  data_publicacao  date,
+  iscaa            text,
+  status           text not null default 'em_branco',
+  formato          text,
+  conteudo         text,
+  referencia       text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  unique (nutri_id, data)
+);
+alter table public.agenda_editorial add column if not exists data_publicacao date;
+create index if not exists agenda_editorial_nutri_idx on public.agenda_editorial(nutri_id, data);
+
+create table if not exists public.posts_performance (
+  id                     uuid primary key default gen_random_uuid(),
+  nutri_id               uuid not null references public.nutris(id) on delete cascade,
+  agenda_id              uuid references public.agenda_editorial(id) on delete set null,
+  data                   date not null default current_date,
+  rede_social            text,
+  formato                text,
+  titulo                 text not null,
+  alcance                integer,
+  views                  integer,
+  curtidas               integer,
+  comentarios            integer,
+  salvamentos            integer,
+  seguidores             integer,
+  investimento           numeric(10,2),
+  turbinado              boolean not null default false,
+  seguidores_24h         integer,
+  investimento_1_semana  numeric(10,2),
+  seguidores_1_semana    integer,
+  recomendacao           text,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now()
+);
+create index if not exists posts_performance_nutri_idx on public.posts_performance(nutri_id, data desc);
+create index if not exists posts_performance_agenda_idx on public.posts_performance(agenda_id);
+
+alter table public.campanhas_trafego enable row level security;
+drop policy if exists campanhas_trafego_all_nutri on public.campanhas_trafego;
+create policy campanhas_trafego_all_nutri on public.campanhas_trafego for all
+  using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
+
+alter table public.agenda_editorial enable row level security;
+drop policy if exists agenda_editorial_all_nutri on public.agenda_editorial;
+create policy agenda_editorial_all_nutri on public.agenda_editorial for all
+  using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
+
+alter table public.posts_performance enable row level security;
+drop policy if exists posts_performance_all_nutri on public.posts_performance;
+create policy posts_performance_all_nutri on public.posts_performance for all
+  using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
+
 
 -- 10.3 Follow-ups (anotações da nutri) -------------------------
 create table if not exists public.followup_templates (
