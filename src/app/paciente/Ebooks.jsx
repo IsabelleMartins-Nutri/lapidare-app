@@ -4,6 +4,7 @@ import { useSession } from '../../lib/session.jsx';
 import { dataBR } from '../../lib/utils.js';
 
 const TAG_LABEL = {
+  ebook: 'E-book',
   receitas: 'Receitas',
   guia: 'Guia',
   protocolo: 'Protocolo',
@@ -15,6 +16,7 @@ export default function Ebooks() {
   const { user } = useSession();
   const [ebooks, setEbooks] = useState(null);
   const [erroCarga, setErroCarga] = useState(null);
+  const [capasUrl, setCapasUrl] = useState({});
 
   useEffect(() => {
     if (!user) return;
@@ -45,7 +47,16 @@ export default function Ebooks() {
         setEbooks([]);
         return;
       }
-      setEbooks(data ?? []);
+      const lista = data ?? [];
+      setEbooks(lista);
+
+      const comCapa = lista.filter(e => e.capa_path);
+      if (comCapa.length > 0) {
+        const urls = await Promise.all(comCapa.map(e =>
+          supabase.storage.from('ebooks').createSignedUrl(e.capa_path, 3600).then(r => [e.id, r.data?.signedUrl])
+        ));
+        setCapasUrl(Object.fromEntries(urls.filter(([, u]) => u)));
+      }
     })();
   }, [user]);
 
@@ -93,9 +104,13 @@ export default function Ebooks() {
                 width: 48, height: 48, borderRadius: 10,
                 background: 'var(--bg-soft)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
+                flexShrink: 0, overflow: 'hidden',
               }}>
-                <i className="ti ti-file-text" style={{ fontSize: 24, color: 'var(--gold-deep)' }} aria-hidden="true"></i>
+                {capasUrl[eb.id] ? (
+                  <img src={capasUrl[eb.id]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <i className="ti ti-file-text" style={{ fontSize: 24, color: 'var(--gold-deep)' }} aria-hidden="true"></i>
+                )}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink)', marginBottom: 2 }}>

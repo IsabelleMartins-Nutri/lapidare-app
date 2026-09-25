@@ -33,6 +33,21 @@ const FORMATOS_AGENDA = [
   ...FORMATOS_POST.map(f => ({ id: f, label: f, bg: '#e6f0fb', color: '#2f6fad' })),
 ];
 
+const STATUS_IDEIA = [
+  { id: 'ideia',        label: 'Ideia',        bg: 'var(--bg2)',       color: 'var(--text3)' },
+  { id: 'roteirizado',  label: 'Roteirizado',  bg: '#f1e6fb',          color: '#7c4fb0' },
+  { id: 'gravado',      label: 'Gravado',      bg: 'var(--orange-bg)', color: 'var(--orange)' },
+  { id: 'editado',      label: 'Editado',      bg: 'var(--blue-bg)',   color: 'var(--blue)' },
+  { id: 'pronto',       label: 'Pronto',       bg: 'var(--green-bg)',  color: 'var(--green)' },
+];
+
+const MKT_TABS = [
+  { id: 'indicadores', label: 'Indicadores de Tráfego', icon: 'chart-line' },
+  { id: 'campanhas',   label: 'Campanhas de Tráfego',   icon: 'speakerphone' },
+  { id: 'agenda',      label: 'Agenda Editorial',       icon: 'calendar' },
+  { id: 'ideias',      label: 'Banco de Ideias',        icon: 'bulb' },
+];
+
 const DIAS_SEMANA = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 
 const PERIODOS = [
@@ -67,6 +82,7 @@ const AGENDA_VAZIA = { iscaa: null, status: 'em_branco', formato: null, conteudo
 
 export default function Marketing() {
   const { user } = useSession();
+  const [tab, setTab] = useState('indicadores');
   const [periodo, setPeriodo] = useState('30');
   const [campanhas, setCampanhas] = useState(null);
   const [novaCampanhaOpen, setNovaCampanhaOpen] = useState(false);
@@ -76,6 +92,12 @@ export default function Marketing() {
   const [agendaPorData, setAgendaPorData] = useState({});
   const [postsPorData, setPostsPorData] = useState({});
   const [performanceOpen, setPerformanceOpen] = useState(null);
+
+  const [ideias, setIdeias] = useState(null);
+  const [novaIdeiaOpen, setNovaIdeiaOpen] = useState(false);
+  const [editarIdeia, setEditarIdeia] = useState(null);
+  const [usarCalendarioIdeia, setUsarCalendarioIdeia] = useState(null);
+  const [filtroStatusIdeia, setFiltroStatusIdeia] = useState('todos');
 
   const diasSemana = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(segunda, i)), [segunda]);
 
@@ -162,12 +184,40 @@ export default function Marketing() {
     carregarCampanhas();
   }
 
+  async function carregarIdeias() {
+    if (!user) return;
+    const { data } = await supabase.from('ideias_conteudo')
+      .select('*').eq('nutri_id', user.id).order('created_at', { ascending: false });
+    setIdeias(data ?? []);
+  }
+  useEffect(() => { carregarIdeias(); }, [user]);
+
+  async function excluirIdeia(ideia) {
+    if (!window.confirm(`Excluir a ideia "${ideia.titulo}"?`)) return;
+    await supabase.from('ideias_conteudo').delete().eq('id', ideia.id);
+    carregarIdeias();
+  }
+
+  const ideiasFiltradas = useMemo(() => {
+    if (!ideias) return [];
+    if (filtroStatusIdeia === 'todos') return ideias;
+    return ideias.filter(i => i.status === filtroStatusIdeia);
+  }, [ideias, filtroStatusIdeia]);
+
   return (
     <>
       <div className="page-title">Marketing</div>
       <div className="page-sub">Tráfego pago e planejamento de conteúdo</div>
 
-      {/* Indicadores de tráfego */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
+        {MKT_TABS.map(t => (
+          <button key={t.id} className={tab === t.id ? 'btn' : 'btn-outline'} onClick={() => setTab(t.id)}>
+            <i className={`ti ti-${t.icon}`} aria-hidden="true"></i> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'indicadores' && (<>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, gap: 12, flexWrap: 'wrap' }}>
         <div className="section-title">Indicadores de Tráfego</div>
         <select value={periodo} onChange={e => setPeriodo(e.target.value)} style={{ margin: 0, width: 'auto' }}>
@@ -198,8 +248,9 @@ export default function Marketing() {
           <div className="stat-val">{indicadores.custoSeguidor != null ? brl(indicadores.custoSeguidor) : '—'}</div>
         </div>
       </div>
+      </>)}
 
-      {/* Campanhas de tráfego */}
+      {tab === 'campanhas' && (<>
       <div className="section-header">
         <div className="section-title">Campanhas de Tráfego</div>
         <button className="btn" onClick={() => setNovaCampanhaOpen(true)}>
@@ -257,8 +308,9 @@ export default function Marketing() {
           </table>
         </div>
       )}
+      </>)}
 
-      {/* Agenda editorial */}
+      {tab === 'agenda' && (<>
       <div className="section-header">
         <div>
           <div className="section-title">Agenda Editorial</div>
@@ -380,6 +432,113 @@ export default function Marketing() {
           })}
         </div>
       </div>
+      </>)}
+
+      {tab === 'ideias' && (<>
+      <div className="section-header">
+        <div>
+          <div className="section-title">Banco de Ideias</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)' }}>Guarde ideias de post soltas e use na Agenda Editorial quando quiser.</div>
+        </div>
+        <button className="btn" onClick={() => setNovaIdeiaOpen(true)}>
+          <i className="ti ti-plus" aria-hidden="true"></i> Nova ideia
+        </button>
+      </div>
+
+      {ideias !== null && ideias.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+          {[{ id: 'todos', label: 'Todos' }, ...STATUS_IDEIA].map(s => {
+            const qtd = s.id === 'todos' ? ideias.length : ideias.filter(i => i.status === s.id).length;
+            const ativo = filtroStatusIdeia === s.id;
+            return (
+              <button key={s.id} onClick={() => setFiltroStatusIdeia(s.id)} style={{
+                fontSize: 12, padding: '5px 12px', borderRadius: 20, cursor: 'pointer',
+                border: ativo ? '1px solid var(--dark)' : '0.5px solid var(--border)',
+                background: ativo ? 'var(--dark)' : 'var(--white)',
+                color: ativo ? 'var(--white)' : 'var(--text2)',
+                fontFamily: 'var(--font-sans)',
+              }}>
+                {s.label} ({qtd})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {ideias === null ? (
+        <div className="card empty-card"><div className="empty-sub">Carregando…</div></div>
+      ) : ideias.length === 0 ? (
+        <div className="card empty-card">
+          <i className="ti ti-bulb empty-icon" aria-hidden="true"></i>
+          <div className="empty-title">Nenhuma ideia guardada ainda</div>
+          <div className="empty-sub">Anote título, ideia e referência pra não perder nada — depois é só usar na Agenda Editorial.</div>
+          <button className="btn" onClick={() => setNovaIdeiaOpen(true)}>
+            <i className="ti ti-plus" aria-hidden="true"></i> Criar primeira ideia
+          </button>
+        </div>
+      ) : ideiasFiltradas.length === 0 ? (
+        <div className="card empty-card">
+          <div className="empty-sub">Nenhuma ideia com esse status.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+          {ideiasFiltradas.map(idea => {
+            const statusInfo = STATUS_IDEIA.find(s => s.id === idea.status) ?? STATUS_IDEIA[0];
+            const objetivoInfo = ISCAA_OPCOES.find(o => o.id === idea.objetivo);
+            return (
+              <div key={idea.id} className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{
+                      display: 'inline-block', fontSize: 11, fontWeight: 500,
+                      padding: '3px 9px', borderRadius: 20,
+                      background: statusInfo.bg, color: statusInfo.color,
+                    }}>{statusInfo.label}</span>
+                    {objetivoInfo && (
+                      <span style={{
+                        display: 'inline-block', fontSize: 11, fontWeight: 500,
+                        padding: '3px 9px', borderRadius: 20,
+                        background: objetivoInfo.bg, color: objetivoInfo.color,
+                      }}>{objetivoInfo.label}</span>
+                    )}
+                  </div>
+                  {idea.data_uso && (
+                    <span style={{ fontSize: 11, color: 'var(--text3)' }}>Usada em {dataBR(idea.data_uso)}</span>
+                  )}
+                </div>
+
+                <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--dark)' }}>{idea.titulo}</div>
+                {idea.ideia && (
+                  <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.5 }}>{idea.ideia}</div>
+                )}
+                {idea.referencia && (
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>Referência: {idea.referencia}</div>
+                )}
+
+                <div style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>
+                  {!idea.data_uso && (
+                    <button className="btn" style={{ flex: 1, justifyContent: 'center', fontSize: 12 }}
+                      onClick={() => setUsarCalendarioIdeia(idea)}>
+                      <i className="ti ti-calendar-plus" aria-hidden="true"></i> Usar no calendário
+                    </button>
+                  )}
+                  <button className="btn-outline" style={{ flex: idea.data_uso ? 1 : 'unset', justifyContent: 'center', fontSize: 12 }}
+                    onClick={() => setEditarIdeia(idea)}>
+                    <i className="ti ti-edit" aria-hidden="true"></i>
+                  </button>
+                  <button onClick={() => excluirIdeia(idea)} title="Excluir" style={{
+                    background: 'none', border: '0.5px solid var(--red)',
+                    borderRadius: 6, padding: '4px 10px', color: 'var(--red)', cursor: 'pointer',
+                  }}>
+                    <i className="ti ti-trash" aria-hidden="true"></i>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      </>)}
 
       {novaCampanhaOpen && (
         <ModalCampanha nutriId={user.id} campanha={{ novo: true, nome: '', plataforma: '', valor_investido: '', contatos_gerados: '', seguidores_gerados: '', data_inicio: new Date().toISOString().slice(0, 10), data_fim: '', obs: '' }}
@@ -393,6 +552,19 @@ export default function Marketing() {
         <ModalConteudoPerformance post={performanceOpen} nutriId={user.id}
           onClose={() => setPerformanceOpen(null)}
           onSaved={() => { setPerformanceOpen(null); carregarAgendaSemana(); }} />
+      )}
+      {novaIdeiaOpen && (
+        <ModalIdeia nutriId={user.id} idea={{ novo: true, titulo: '', ideia: '', referencia: '', objetivo: '', status: 'ideia' }}
+          onClose={() => setNovaIdeiaOpen(false)} onSaved={() => { setNovaIdeiaOpen(false); carregarIdeias(); }} />
+      )}
+      {editarIdeia && (
+        <ModalIdeia nutriId={user.id} idea={editarIdeia}
+          onClose={() => setEditarIdeia(null)} onSaved={() => { setEditarIdeia(null); carregarIdeias(); }} />
+      )}
+      {usarCalendarioIdeia && (
+        <ModalUsarCalendario idea={usarCalendarioIdeia} nutriId={user.id} dataPadrao={fmtDate(segunda)}
+          onClose={() => setUsarCalendarioIdeia(null)}
+          onSaved={() => { setUsarCalendarioIdeia(null); carregarIdeias(); carregarAgendaSemana(); }} />
       )}
     </>
   );
@@ -526,6 +698,155 @@ function ModalCampanha({ campanha, nutriId, onClose, onSaved }) {
           <button className="btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={onClose}>Cancelar</button>
           <button className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={salvar} disabled={busy}>
             <i className="ti ti-check" aria-hidden="true"></i> {busy ? '...' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/* ============================================================
+   MODAL: ideia de conteúdo
+   ============================================================ */
+function ModalIdeia({ idea, nutriId, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    titulo: idea.titulo ?? '',
+    ideia: idea.ideia ?? '',
+    referencia: idea.referencia ?? '',
+    objetivo: idea.objetivo ?? '',
+    status: idea.status ?? 'ideia',
+  });
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState(null);
+  const set = (campo) => (e) => setForm(f => ({ ...f, [campo]: e.target.value }));
+
+  async function salvar() {
+    setErro(null);
+    if (!form.titulo.trim()) return setErro('Informe o título.');
+    setBusy(true);
+    const payload = {
+      titulo: form.titulo.trim(),
+      ideia: form.ideia.trim() || null,
+      referencia: form.referencia.trim() || null,
+      objetivo: form.objetivo || null,
+      status: form.status,
+    };
+    const { error } = idea.novo
+      ? await supabase.from('ideias_conteudo').insert({ ...payload, nutri_id: nutriId })
+      : await supabase.from('ideias_conteudo').update(payload).eq('id', idea.id);
+    setBusy(false);
+    if (error) return setErro('Erro: ' + error.message);
+    onSaved();
+  }
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 100, padding: 16,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: 'var(--white)', borderRadius: 12, maxWidth: 480, width: '100%',
+        maxHeight: '90vh', overflow: 'auto', padding: 20,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ fontSize: 16, fontWeight: 500 }}>{idea.novo ? 'Nova ideia' : 'Editar ideia'}</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text3)' }}>
+            <i className="ti ti-x" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <label className="form-lbl" style={{ marginTop: 0 }}>Título</label>
+        <input value={form.titulo} onChange={set('titulo')} placeholder="Ex: 5 erros que atrasam seu emagrecimento" />
+
+        <label className="form-lbl">Ideia</label>
+        <textarea rows={3} value={form.ideia} onChange={set('ideia')}
+          placeholder="Do que se trata, o que quer passar nesse conteúdo..." style={{ resize: 'vertical' }} />
+
+        <label className="form-lbl">Referência</label>
+        <input value={form.referencia} onChange={set('referencia')} placeholder="Link, print, inspiração..." />
+
+        <label className="form-lbl">Status</label>
+        <select value={form.status} onChange={set('status')}>
+          {STATUS_IDEIA.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+
+        {erro && (
+          <div style={{ background: 'var(--red-bg)', color: 'var(--red)', padding: '6px 10px', borderRadius: 6, fontSize: 13, marginTop: 10 }}>{erro}</div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <button className="btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={onClose}>Cancelar</button>
+          <button className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={salvar} disabled={busy}>
+            <i className="ti ti-check" aria-hidden="true"></i> {busy ? '...' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/* ============================================================
+   MODAL: usar ideia no calendário
+   ============================================================ */
+function ModalUsarCalendario({ idea, nutriId, dataPadrao, onClose, onSaved }) {
+  const [data, setData] = useState(dataPadrao);
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState(null);
+
+  async function usar() {
+    setErro(null);
+    if (!data) return setErro('Escolha uma data.');
+    setBusy(true);
+    // Upsert parcial: só grava conteúdo/referência — se o dia já tiver
+    // outros campos preenchidos (status, formato, ISCAA), eles continuam
+    // intactos, já que não fazem parte do payload.
+    const { error: agError } = await supabase.from('agenda_editorial').upsert({
+      nutri_id: nutriId,
+      data,
+      conteudo: idea.titulo,
+      referencia: idea.referencia || null,
+    }, { onConflict: 'nutri_id,data' });
+    if (agError) {
+      setBusy(false);
+      return setErro('Erro: ' + agError.message);
+    }
+    await supabase.from('ideias_conteudo').update({ data_uso: data }).eq('id', idea.id);
+    setBusy(false);
+    onSaved();
+  }
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 110, padding: 16,
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: 'var(--white)', borderRadius: 12, maxWidth: 420, width: '100%',
+        padding: 20,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+          <div style={{ fontSize: 16, fontWeight: 500 }}>Usar no calendário</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--text3)' }}>
+            <i className="ti ti-x" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 12 }}>"{idea.titulo}"</div>
+
+        <label className="form-lbl" style={{ marginTop: 0 }}>Em que dia?</label>
+        <input type="date" value={data} onChange={e => setData(e.target.value)} />
+
+        {erro && (
+          <div style={{ background: 'var(--red-bg)', color: 'var(--red)', padding: '6px 10px', borderRadius: 6, fontSize: 13, marginTop: 10 }}>{erro}</div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <button className="btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={onClose}>Cancelar</button>
+          <button className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={usar} disabled={busy}>
+            <i className="ti ti-check" aria-hidden="true"></i> {busy ? '...' : 'Usar nessa data'}
           </button>
         </div>
       </div>

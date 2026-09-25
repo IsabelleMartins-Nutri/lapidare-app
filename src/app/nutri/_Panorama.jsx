@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase.js';
 
 const MAX_FASES = 10;
 
-export default function Panorama({ pacienteId, nutriId, pacienteNome }) {
+export default function Panorama({ pacienteId, nutriId, pacienteNome, onDirtyChange }) {
   const [carregando, setCarregando] = useState(true);
   const [condutas, setCondutas] = useState([]);
   const [pontosAtencao, setPontosAtencao] = useState([]);
@@ -13,18 +13,39 @@ export default function Panorama({ pacienteId, nutriId, pacienteNome }) {
   const [apresentacao, setApresentacao] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [salvoSnapshot, setSalvoSnapshot] = useState(null);
+  const [sujo, setSujo] = useState(false);
 
   async function carregar() {
     const [pRes, cRes] = await Promise.all([
       supabase.from('panoramas').select('*').eq('paciente_id', pacienteId).maybeSingle(),
       supabase.from('condutas_biblioteca').select('*').eq('nutri_id', nutriId).order('created_at'),
     ]);
-    setPontosAtencao(pRes.data?.pontos_atencao ?? []);
-    setFases(pRes.data?.fases ?? []);
+    const pontos = pRes.data?.pontos_atencao ?? [];
+    const fasesCarregadas = pRes.data?.fases ?? [];
+    setPontosAtencao(pontos);
+    setFases(fasesCarregadas);
     setCondutas(cRes.data ?? []);
+    setSalvoSnapshot(JSON.stringify([pontos, fasesCarregadas]));
     setCarregando(false);
   }
   useEffect(() => { carregar(); }, [pacienteId, nutriId]);
+
+  // Avisa quem estiver de fora (troca de aba dentro do prontuário) e o
+  // próprio navegador (fechar/recarregar) se tiver alteração não salva —
+  // como o salvamento aqui é manual, sem isso dava pra perder edição.
+  useEffect(() => {
+    if (salvoSnapshot == null) return;
+    setSujo(JSON.stringify([pontosAtencao, fases]) !== salvoSnapshot);
+  }, [pontosAtencao, fases, salvoSnapshot]);
+  useEffect(() => { onDirtyChange?.(sujo); }, [sujo, onDirtyChange]);
+  useEffect(() => {
+    if (!sujo) return;
+    const onBeforeUnload = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [sujo]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   // ESC pra sair da apresentação
   useEffect(() => {
@@ -101,6 +122,7 @@ export default function Panorama({ pacienteId, nutriId, pacienteNome }) {
     }, { onConflict: 'paciente_id' });
     setBusy(false);
     if (error) return setFeedback({ tipo: 'erro', msg: 'Erro: ' + error.message });
+    setSalvoSnapshot(JSON.stringify([pontosAtencao, fases]));
     setFeedback({ tipo: 'ok', msg: 'Panorama salvo.' });
   }
 
@@ -121,6 +143,16 @@ export default function Panorama({ pacienteId, nutriId, pacienteNome }) {
 
   return (
     <>
+      {sujo && (
+        <div style={{
+          background: 'var(--orange-bg)', color: 'var(--orange)',
+          padding: '8px 12px', borderRadius: 6, fontSize: 12, marginBottom: 12,
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <i className="ti ti-alert-triangle" aria-hidden="true"></i>
+          Você tem alterações não salvas — clique em "Salvar panorama" no final da página antes de sair.
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div style={{ fontSize: 13, color: 'var(--text3)' }}>
           Planeje o caminho do tratamento em fases — pra apresentar na consulta de venda.

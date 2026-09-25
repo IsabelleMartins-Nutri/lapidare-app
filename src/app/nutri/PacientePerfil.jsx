@@ -35,6 +35,14 @@ export default function PacientePerfil() {
   const { user } = useSession();
   const [paciente, setPaciente] = useState(null);
   const [tab, setTab] = useState('plano');
+  const [panoramaSujo, setPanoramaSujo] = useState(false);
+
+  function trocarTab(novaTab) {
+    if (tab === 'panorama' && panoramaSujo && novaTab !== 'panorama') {
+      if (!window.confirm('Você tem alterações não salvas no Panorama. Sair sem salvar e perder essas mudanças?')) return;
+    }
+    setTab(novaTab);
+  }
   const [editandoNasc, setEditandoNasc] = useState(false);
   const [novoNasc, setNovoNasc] = useState('');
   const [salvandoNasc, setSalvandoNasc] = useState(false);
@@ -403,7 +411,7 @@ export default function PacientePerfil() {
         ].map(t => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => trocarTab(t.id)}
             style={{
               flex: '0 0 auto',
               padding: '7px 12px', fontSize: 13, fontWeight: 500,
@@ -425,7 +433,7 @@ export default function PacientePerfil() {
       {tab === 'anamnese' && <Anamnese pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'followup' && <FollowUp pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'meta' && <Meta pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
-      {tab === 'panorama' && <Panorama pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
+      {tab === 'panorama' && <Panorama pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} onDirtyChange={setPanoramaSujo} />}
       {tab === 'suplementacao' && <Suplementacao pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'habitos' && <Habitos pacienteId={paciente.id} nutriId={user.id} pacienteNome={paciente.nome} />}
       {tab === 'plano' && <PublicarPlano pacienteId={paciente.id} nutriId={user.id} />}

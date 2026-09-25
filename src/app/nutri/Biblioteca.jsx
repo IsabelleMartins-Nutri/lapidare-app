@@ -4,6 +4,7 @@ import { useSession } from '../../lib/session.jsx';
 import { dataBR, iniciais } from '../../lib/utils.js';
 
 const TAGS = [
+  { id: 'ebook',         label: 'E-book',         cor: 'red'    },
   { id: 'receitas',      label: 'Receitas',       cor: 'orange' },
   { id: 'guia',          label: 'Guia',           cor: 'blue'   },
   { id: 'protocolo',     label: 'Protocolo',      cor: 'green'  },
@@ -29,6 +30,9 @@ export default function Biblioteca() {
   const [filtroTag, setFiltroTag] = useState('todos');
   const [uploadOpen, setUploadOpen] = useState(false);
   const [atribuirEbook, setAtribuirEbook] = useState(null);
+  const [atualizarEbook, setAtualizarEbook] = useState(null);
+  const [capasUrl, setCapasUrl] = useState({});
+  const [capasErro, setCapasErro] = useState({});
 
   async function carregar() {
     if (!user) return;
@@ -37,7 +41,8 @@ export default function Biblioteca() {
       supabase.from('pacientes').select('id, nome, email').eq('nutri_id', user.id).order('nome'),
       supabase.from('ebooks_pacientes').select('ebook_id, paciente_id'),
     ]);
-    setEbooks(ebRes.data ?? []);
+    const lista = ebRes.data ?? [];
+    setEbooks(lista);
     setPacientes(pacRes.data ?? []);
     // mapa ebook_id → [paciente_id]
     const mapa = {};
@@ -46,6 +51,18 @@ export default function Biblioteca() {
       mapa[a.ebook_id].push(a.paciente_id);
     }
     setAtribuicoes(mapa);
+
+    const comCapa = lista.filter(e => e.capa_path);
+    if (comCapa.length > 0) {
+      const urls = await Promise.all(comCapa.map(e =>
+        supabase.storage.from('ebooks').createSignedUrl(e.capa_path, 3600).then(r => {
+          if (r.error) console.error(`Falha ao gerar link da capa de "${e.titulo}":`, r.error);
+          return [e.id, r.data?.signedUrl, r.error?.message];
+        })
+      ));
+      setCapasUrl(Object.fromEntries(urls.filter(([, u]) => u)));
+      setCapasErro(Object.fromEntries(urls.filter(([, , m]) => m).map(([id, , m]) => [id, m])));
+    }
   }
   useEffect(() => { carregar(); }, [user]);
 
@@ -127,17 +144,22 @@ export default function Biblioteca() {
             const nPac = atribuicoes[eb.id]?.length ?? 0;
             const tag = TAGS.find(t => t.id === (eb.tag ?? 'outro')) ?? TAGS[TAGS.length - 1];
             return (
-              <div key={eb.id} className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'start', gap: 10 }}>
-                  <div style={{
-                    width: 44, height: 44, borderRadius: 8,
-                    background: 'var(--bg2)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0,
-                  }}>
-                    <i className="ti ti-file-text" style={{ fontSize: 22, color: 'var(--dark)' }} aria-hidden="true"></i>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+              <div key={eb.id} className="card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{
+                  aspectRatio: '4/3', background: 'var(--bg2)', position: 'relative',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+                }}>
+                  {capasUrl[eb.id] ? (
+                    <img src={capasUrl[eb.id]} alt={eb.titulo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <i className="ti ti-file-text" style={{ fontSize: 32, color: 'var(--text3)' }} aria-hidden="true"></i>
+                  )}
+                  {capasErro[eb.id] && (
+                    <div style={{ position: 'absolute', fontSize: 11, color: 'var(--red)', padding: 8 }}>Erro na capa: {capasErro[eb.id]}</div>
+                  )}
+                </div>
+                <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
+                  <div>
                     <div style={{ fontWeight: 500, fontSize: 14, lineHeight: 1.3, marginBottom: 4 }}>{eb.titulo}</div>
                     <span style={{
                       display: 'inline-block', fontSize: 10, padding: '2px 8px',
@@ -145,34 +167,37 @@ export default function Biblioteca() {
                       ...pillStyleFor(eb.tag ?? 'outro'),
                     }}>{tag.label}</span>
                   </div>
-                </div>
-                {eb.descricao && (
-                  <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.4 }}>
-                    {eb.descricao}
+                  {eb.descricao && (
+                    <div style={{ fontSize: 12, color: 'var(--text3)', lineHeight: 1.4 }}>
+                      {eb.descricao}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <i className="ti ti-users" aria-hidden="true"></i>
+                    {nPac === 0
+                      ? 'Não atribuído'
+                      : `${nPac} paciente${nPac === 1 ? '' : 's'}`}
+                    <span style={{ marginLeft: 'auto' }}>{dataBR(eb.created_at)}</span>
                   </div>
-                )}
-                <div style={{ fontSize: 11, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <i className="ti ti-users" aria-hidden="true"></i>
-                  {nPac === 0
-                    ? 'Não atribuído'
-                    : `${nPac} paciente${nPac === 1 ? '' : 's'}`}
-                  <span style={{ marginLeft: 'auto' }}>{dataBR(eb.created_at)}</span>
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="btn-outline" style={{ flex: 1, justifyContent: 'center', fontSize: 12 }} onClick={() => abrirEbook(eb)}>
-                    <i className="ti ti-eye" aria-hidden="true"></i> Abrir
-                  </button>
-                  <button className="btn" style={{ flex: 1, justifyContent: 'center', fontSize: 12 }} onClick={() => setAtribuirEbook(eb)}>
-                    <i className="ti ti-share" aria-hidden="true"></i> Atribuir
-                  </button>
-                  <button onClick={() => excluirEbook(eb)}
-                    title="Excluir"
-                    style={{
-                      background: 'none', border: '0.5px solid var(--red)',
-                      borderRadius: 6, padding: '4px 8px',
-                      color: 'var(--red)', cursor: 'pointer',
-                    }}>
-                    <i className="ti ti-trash" aria-hidden="true"></i>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 'auto' }}>
+                    <button className="btn-outline" style={{ flex: 1, justifyContent: 'center', fontSize: 12 }} onClick={() => abrirEbook(eb)}>
+                      <i className="ti ti-eye" aria-hidden="true"></i> Abrir
+                    </button>
+                    <button className="btn" style={{ flex: 1, justifyContent: 'center', fontSize: 12 }} onClick={() => setAtribuirEbook(eb)}>
+                      <i className="ti ti-share" aria-hidden="true"></i> Atribuir
+                    </button>
+                    <button onClick={() => excluirEbook(eb)}
+                      title="Excluir"
+                      style={{
+                        background: 'none', border: '0.5px solid var(--red)',
+                        borderRadius: 6, padding: '4px 8px',
+                        color: 'var(--red)', cursor: 'pointer',
+                      }}>
+                      <i className="ti ti-trash" aria-hidden="true"></i>
+                    </button>
+                  </div>
+                  <button className="btn-outline" style={{ justifyContent: 'center', fontSize: 12 }} onClick={() => setAtualizarEbook(eb)}>
+                    <i className="ti ti-refresh" aria-hidden="true"></i> Atualizar arquivo
                   </button>
                 </div>
               </div>
@@ -196,6 +221,15 @@ export default function Biblioteca() {
           atribuidos={atribuicoes[atribuirEbook.id] ?? []}
           onClose={() => setAtribuirEbook(null)}
           onSaved={() => { setAtribuirEbook(null); carregar(); }}
+        />
+      )}
+
+      {atualizarEbook && (
+        <ModalAtualizarArquivo
+          ebook={atualizarEbook}
+          nutriId={user.id}
+          onClose={() => setAtualizarEbook(null)}
+          onSaved={() => { setAtualizarEbook(null); carregar(); }}
         />
       )}
     </>
@@ -237,31 +271,69 @@ function ModalUpload({ nutriId, onClose, onSaved }) {
   const [descricao, setDescricao] = useState('');
   const [tag, setTag] = useState('guia');
   const [arquivo, setArquivo] = useState(null);
+  const [capaBlob, setCapaBlob] = useState(null);
+  const [capaPreview, setCapaPreview] = useState(null);
+  const [gerandoCapa, setGerandoCapa] = useState(false);
+  const [erroCapa, setErroCapa] = useState(null);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState(null);
+
+  async function selecionarArquivo(file) {
+    setArquivo(file ?? null);
+    setCapaBlob(null);
+    setCapaPreview(null);
+    setErroCapa(null);
+    if (!file) return;
+    setGerandoCapa(true);
+    try {
+      const { gerarCapaPdf } = await import('../../lib/pdfCapa.js');
+      const blob = await gerarCapaPdf(file);
+      setCapaBlob(blob);
+      setCapaPreview(URL.createObjectURL(blob));
+    } catch (e) {
+      // Sem capa gerada não é impeditivo — o e-book continua funcionando
+      // normalmente, só fica sem fotinho (ex: PDF protegido/corrompido).
+      console.error('Falha ao gerar capa do PDF:', e);
+      setErroCapa(e?.message || 'Não foi possível gerar a fotinho automaticamente.');
+    }
+    setGerandoCapa(false);
+  }
 
   async function enviar() {
     setErro(null);
     if (!arquivo) return setErro('Selecione um arquivo PDF.');
     if (!titulo.trim()) return setErro('Informe um título.');
     setBusy(true);
+    const nomeBase = `${Date.now()}-${titulo.trim().replace(/[^a-z0-9]/gi, '_')}`;
     const ext = (arquivo.name.split('.').pop() || 'pdf').toLowerCase();
-    const path = `${nutriId}/${Date.now()}-${titulo.trim().replace(/[^a-z0-9]/gi, '_')}.${ext}`;
+    const path = `${nutriId}/${nomeBase}.${ext}`;
     const { error: upErr } = await supabase.storage.from('ebooks')
       .upload(path, arquivo, { contentType: arquivo.type });
     if (upErr) {
       setBusy(false);
       return setErro('Upload falhou: ' + upErr.message);
     }
+
+    let capaPath = null;
+    if (capaBlob) {
+      capaPath = `${nutriId}/${nomeBase}-capa.jpg`;
+      const { error: capaErr } = await supabase.storage.from('ebooks')
+        .upload(capaPath, capaBlob, { contentType: 'image/jpeg' });
+      if (capaErr) {
+        console.error('Falha ao subir a capa do PDF:', capaErr);
+        capaPath = null; // segue sem capa em vez de travar o envio
+      }
+    }
+
     const { error: insErr } = await supabase.from('ebooks').insert({
       nutri_id: nutriId,
       titulo: titulo.trim(),
       descricao: descricao.trim() || null,
-      tag, storage_path: path,
+      tag, storage_path: path, capa_path: capaPath,
     });
     setBusy(false);
     if (insErr) {
-      await supabase.storage.from('ebooks').remove([path]);
+      await supabase.storage.from('ebooks').remove([path, ...(capaPath ? [capaPath] : [])]);
       return setErro('Erro: ' + insErr.message);
     }
     onSaved();
@@ -270,11 +342,36 @@ function ModalUpload({ nutriId, onClose, onSaved }) {
   return (
     <ModalShell title="Adicionar e-book" subtitle="Sobe uma vez e atribui pra quantas pacientes quiser" onClose={onClose}>
       <label className="form-lbl">Arquivo (PDF)</label>
-      <input type="file" accept="application/pdf" onChange={e => setArquivo(e.target.files?.[0] ?? null)}
+      <input type="file" accept="application/pdf" onChange={e => selecionarArquivo(e.target.files?.[0] ?? null)}
         style={{ padding: 6 }} />
       <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
         {arquivo ? `${arquivo.name} · ${(arquivo.size / 1024 / 1024).toFixed(1)} MB` : 'Nenhum arquivo selecionado'}
       </div>
+
+      {(gerandoCapa || capaPreview) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: 8, background: 'var(--bg2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, overflow: 'hidden',
+          }}>
+            {capaPreview ? (
+              <img src={capaPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <i className="ti ti-loader-2" style={{ fontSize: 20, color: 'var(--text3)' }} aria-hidden="true"></i>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+            {gerandoCapa ? 'Gerando fotinho a partir da 1ª página...' : 'Fotinho gerada automaticamente a partir da 1ª página do PDF.'}
+          </div>
+        </div>
+      )}
+      {erroCapa && (
+        <div style={{
+          background: 'var(--red-bg)', color: 'var(--red)',
+          padding: '6px 10px', borderRadius: 6, fontSize: 11, marginTop: 10,
+        }}>Não consegui gerar a fotinho automaticamente: {erroCapa}. O e-book continua funcionando normalmente, só sem foto.</div>
+      )}
 
       <label className="form-lbl" style={{ marginTop: 12 }}>Título</label>
       <input value={titulo} onChange={e => setTitulo(e.target.value)}
@@ -301,8 +398,8 @@ function ModalUpload({ nutriId, onClose, onSaved }) {
         <button className="btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={onClose}>
           Cancelar
         </button>
-        <button className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={enviar} disabled={busy || !arquivo}>
-          <i className="ti ti-upload" aria-hidden="true"></i> {busy ? 'Enviando...' : 'Salvar'}
+        <button className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={enviar} disabled={busy || !arquivo || gerandoCapa}>
+          <i className="ti ti-upload" aria-hidden="true"></i> {busy ? 'Enviando...' : gerandoCapa ? 'Gerando capa...' : 'Salvar'}
         </button>
       </div>
     </ModalShell>
@@ -396,6 +493,131 @@ function ModalAtribuir({ ebook, pacientes, atribuidos, onClose, onSaved }) {
         </button>
         <button className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={salvar} disabled={busy}>
           <i className="ti ti-check" aria-hidden="true"></i> {busy ? 'Salvando...' : 'Salvar atribuições'}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+
+function ModalAtualizarArquivo({ ebook, nutriId, onClose, onSaved }) {
+  const [arquivo, setArquivo] = useState(null);
+  const [capaBlob, setCapaBlob] = useState(null);
+  const [capaPreview, setCapaPreview] = useState(null);
+  const [gerandoCapa, setGerandoCapa] = useState(false);
+  const [erroCapa, setErroCapa] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState(null);
+
+  async function selecionarArquivo(file) {
+    setArquivo(file ?? null);
+    setCapaBlob(null);
+    setCapaPreview(null);
+    setErroCapa(null);
+    if (!file) return;
+    setGerandoCapa(true);
+    try {
+      const { gerarCapaPdf } = await import('../../lib/pdfCapa.js');
+      const blob = await gerarCapaPdf(file);
+      setCapaBlob(blob);
+      setCapaPreview(URL.createObjectURL(blob));
+    } catch (e) {
+      // Sem capa gerada não é impeditivo — segue com a atualização normalmente.
+      console.error('Falha ao gerar capa do PDF:', e);
+      setErroCapa(e?.message || 'Não foi possível gerar a fotinho automaticamente.');
+    }
+    setGerandoCapa(false);
+  }
+
+  async function enviar() {
+    setErro(null);
+    if (!arquivo) return setErro('Selecione o novo arquivo PDF.');
+    setBusy(true);
+    const nomeBase = `${Date.now()}-${ebook.titulo.trim().replace(/[^a-z0-9]/gi, '_')}`;
+    const ext = (arquivo.name.split('.').pop() || 'pdf').toLowerCase();
+    const path = `${nutriId}/${nomeBase}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('ebooks')
+      .upload(path, arquivo, { contentType: arquivo.type });
+    if (upErr) {
+      setBusy(false);
+      return setErro('Upload falhou: ' + upErr.message);
+    }
+
+    let capaPath = null;
+    if (capaBlob) {
+      capaPath = `${nutriId}/${nomeBase}-capa.jpg`;
+      const { error: capaErr } = await supabase.storage.from('ebooks')
+        .upload(capaPath, capaBlob, { contentType: 'image/jpeg' });
+      if (capaErr) {
+        console.error('Falha ao subir a capa do PDF:', capaErr);
+        capaPath = null;
+      }
+    }
+
+    // Mesma linha em `ebooks`, só troca os arquivos — quem já tinha acesso
+    // continua tendo, sem precisar reatribuir.
+    const { error: updErr } = await supabase.from('ebooks')
+      .update({ storage_path: path, capa_path: capaPath })
+      .eq('id', ebook.id);
+    if (updErr) {
+      setBusy(false);
+      await supabase.storage.from('ebooks').remove([path, ...(capaPath ? [capaPath] : [])]);
+      return setErro('Erro: ' + updErr.message);
+    }
+
+    const antigos = [ebook.storage_path, ...(ebook.capa_path ? [ebook.capa_path] : [])];
+    await supabase.storage.from('ebooks').remove(antigos);
+    setBusy(false);
+    onSaved();
+  }
+
+  return (
+    <ModalShell title="Atualizar arquivo" subtitle={`"${ebook.titulo}" — pacientes já atribuídas mantêm acesso`} onClose={onClose}>
+      <label className="form-lbl" style={{ marginTop: 0 }}>Novo arquivo (PDF)</label>
+      <input type="file" accept="application/pdf" onChange={e => selecionarArquivo(e.target.files?.[0] ?? null)}
+        style={{ padding: 6 }} />
+      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+        {arquivo ? `${arquivo.name} · ${(arquivo.size / 1024 / 1024).toFixed(1)} MB` : 'Nenhum arquivo selecionado'}
+      </div>
+
+      {(gerandoCapa || capaPreview) && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: 8, background: 'var(--bg2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, overflow: 'hidden',
+          }}>
+            {capaPreview ? (
+              <img src={capaPreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <i className="ti ti-loader-2" style={{ fontSize: 20, color: 'var(--text3)' }} aria-hidden="true"></i>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+            {gerandoCapa ? 'Gerando fotinho a partir da 1ª página...' : 'Fotinho nova gerada automaticamente a partir do PDF.'}
+          </div>
+        </div>
+      )}
+      {erroCapa && (
+        <div style={{
+          background: 'var(--red-bg)', color: 'var(--red)',
+          padding: '6px 10px', borderRadius: 6, fontSize: 11, marginTop: 10,
+        }}>Não consegui gerar a fotinho automaticamente: {erroCapa}. O arquivo continua sendo atualizado normalmente, só sem foto.</div>
+      )}
+
+      {erro && (
+        <div style={{
+          background: 'var(--red-bg)', color: 'var(--red)',
+          padding: '6px 10px', borderRadius: 6, fontSize: 11, marginTop: 10,
+        }}>{erro}</div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        <button className="btn-outline" style={{ flex: 1, justifyContent: 'center' }} onClick={onClose}>
+          Cancelar
+        </button>
+        <button className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={enviar} disabled={busy || !arquivo || gerandoCapa}>
+          <i className="ti ti-refresh" aria-hidden="true"></i> {busy ? 'Atualizando...' : gerandoCapa ? 'Gerando capa...' : 'Atualizar arquivo'}
         </button>
       </div>
     </ModalShell>

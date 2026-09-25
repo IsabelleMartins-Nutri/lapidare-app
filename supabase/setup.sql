@@ -800,6 +800,28 @@ alter table public.parcelas add column if not exists valor_liquido numeric(10,2)
 create index if not exists parcelas_nutri_id_idx on public.parcelas(nutri_id, vencimento);
 create index if not exists parcelas_venda_id_idx on public.parcelas(venda_id);
 
+-- 2.10b Receitas avulsas — dinheiro que entrou sem ser uma venda nova
+-- (ex: paciente que paga por Pix um valor solto). Conta como receita do mês
+-- e no balanço, mas NÃO conta como venda fechada no faturamento.
+create table if not exists public.receitas_avulsas (
+  id                    uuid primary key default gen_random_uuid(),
+  nutri_id              uuid not null references public.nutris(id) on delete cascade,
+  paciente_id           uuid references public.pacientes(id) on delete set null,
+  paciente_nome_manual  text,
+  descricao             text not null,
+  valor                 numeric(10,2) not null,
+  valor_liquido         numeric(10,2),
+  forma_pgto            text not null default 'pix',
+  data_recebimento      date not null default current_date,
+  obs                   text,
+  created_at            timestamptz not null default now()
+);
+create index if not exists receitas_avulsas_nutri_idx on public.receitas_avulsas(nutri_id, data_recebimento desc);
+alter table public.receitas_avulsas enable row level security;
+drop policy if exists receitas_avulsas_all on public.receitas_avulsas;
+create policy receitas_avulsas_all on public.receitas_avulsas for all
+  using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
+
 -- 2.11.8 Fotos de evolução da paciente (antes/depois) ------------
 -- Nutri tira foto no consultório OU paciente envia do app dela.
 -- Usadas no Dashboard de Evolução (timeline + comparativo).
@@ -1770,10 +1792,12 @@ create table if not exists public.ebooks (
   titulo        text not null,
   descricao     text,
   storage_path  text not null,
+  capa_path     text,
   tag           text,
   created_at    timestamptz not null default now()
 );
 create index if not exists ebooks_nutri_idx on public.ebooks(nutri_id, created_at desc);
+alter table public.ebooks add column if not exists capa_path text;
 
 create table if not exists public.ebooks_pacientes (
   id          uuid primary key default gen_random_uuid(),
@@ -1915,6 +1939,33 @@ create policy agenda_editorial_all_nutri on public.agenda_editorial for all
 alter table public.posts_performance enable row level security;
 drop policy if exists posts_performance_all_nutri on public.posts_performance;
 create policy posts_performance_all_nutri on public.posts_performance for all
+  using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
+
+-- 10.2d Banco de ideias de conteúdo — guarda ideias de post soltas até a
+-- nutri decidir em que dia da Agenda Editorial usar cada uma.
+create table if not exists public.ideias_conteudo (
+  id          uuid primary key default gen_random_uuid(),
+  nutri_id    uuid not null references public.nutris(id) on delete cascade,
+  titulo      text not null,
+  ideia       text,
+  referencia  text,
+  objetivo    text,
+  status      text not null default 'ideia' check (status in ('ideia', 'roteirizado', 'gravado', 'editado', 'pronto')),
+  data_uso    date,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+create index if not exists ideias_conteudo_nutri_idx on public.ideias_conteudo(nutri_id, created_at desc);
+
+alter table public.ideias_conteudo drop constraint if exists ideias_conteudo_status_check;
+update public.ideias_conteudo set status = 'roteirizado' where status = 'iniciado';
+alter table public.ideias_conteudo add column if not exists objetivo text;
+alter table public.ideias_conteudo
+  add constraint ideias_conteudo_status_check check (status in ('ideia', 'roteirizado', 'gravado', 'editado', 'pronto'));
+
+alter table public.ideias_conteudo enable row level security;
+drop policy if exists ideias_conteudo_all_nutri on public.ideias_conteudo;
+create policy ideias_conteudo_all_nutri on public.ideias_conteudo for all
   using (nutri_id = auth.uid()) with check (nutri_id = auth.uid());
 
 
@@ -2164,19 +2215,12 @@ create policy documentos_delete on storage.objects
 insert into storage.buckets (id, name, public)
 values ('ebooks', 'ebooks', false)
 on conflict (id) do nothing;
+-- Limite de tamanho por arquivo — 300MB, pra comportar e-books maiores.
+-- (o teto real também depende do limite global do projeto no Supabase,
+-- configurado em Project Settings → Storage → Global file size limit)
+update storage.buckets set file_size_limit = 314572800 where id = 'ebooks';
 
-drop policy if exists ebooks_storage_select on storage.objects;
-create policy ebooks_storage_select on storage.objects for select using (
-  bucket_id = 'ebooks'
-  and (
-    split_part(name, '/', 1) = auth.uid()::text
-    or exists (
-      select 1 from public.ebooks e
-      join public.ebooks_pacientes ep on ep.ebook_id = e.id
-      where e.storage_path = name and ep.paciente_id = auth.uid()
-    )
-  )
-);
+-- (policy de select dos e-books: definida mais abaixo, na seção com paciente_pode_ver_ebook)
 drop policy if exists ebooks_storage_insert on storage.objects;
 create policy ebooks_storage_insert on storage.objects for insert with check (
   bucket_id = 'ebooks' and split_part(name, '/', 1) = auth.uid()::text
@@ -2589,7 +2633,7 @@ create policy ebooks_storage_select on storage.objects for select using (
     split_part(name, '/', 1) = auth.uid()::text
     or exists (
       select 1 from public.ebooks e
-      where e.storage_path = name and public.paciente_pode_ver_ebook(e.id)
+      where (e.storage_path = name or e.capa_path = name) and public.paciente_pode_ver_ebook(e.id)
     )
   )
 );
